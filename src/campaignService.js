@@ -4,11 +4,6 @@ import { officialAssimilations } from "./assimilationsCatalog.js";
 export const CAMPAIGN_STORAGE_KEY = "assimilation-campaign-store";
 export const CAMPAIGN_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-export const currentUser = {
-  id: "user-marcos",
-  name: "Marcos",
-};
-
 export function getAssimilations() {
   return officialAssimilations;
 }
@@ -84,45 +79,13 @@ export function generateCampaignJoinCode(existingCodes = []) {
   throw new Error("Não foi possível gerar um código de campanha único.");
 }
 
-function seedCampaignStore(legacyCharacter) {
-  const now = new Date().toISOString();
-  const characterId = "character-luana-ferreira";
-  const campaignId = "campaign-horto-da-nascente";
-  const joinCode = generateCampaignJoinCode();
-  const baseCharacter = {
-    ...(legacyCharacter && typeof legacyCharacter === "object" ? clone(legacyCharacter) : {}),
-    name: legacyCharacter?.name || "Luana Ferreira",
-  };
+function createEmptyStore() {
   return {
     version: 1,
-    currentUser,
-    campaigns: [{
-      id: campaignId,
-      name: "Horto da Nascente",
-      joinCode,
-      masterUserId: currentUser.id,
-      characterCreationSettings: { startingDeterminationLevel: 9, allowExtraStartingEquipment: false, startingScarcityCap: 0 },
-      createdAt: now,
-      updatedAt: now,
-    }],
-    memberships: [
-      { id: "membership-marcos-horto", campaignId, userId: currentUser.id, role: "master", joinedAt: now },
-      { id: "membership-joao-horto", campaignId, userId: "user-joao", role: "player", characterId: "character-elias-varn", joinedAt: now },
-      { id: "membership-ana-horto", campaignId, userId: "user-ana", role: "player", characterId: "character-luana", joinedAt: now },
-      { id: "membership-pedro-horto", campaignId, userId: "user-pedro", role: "player", characterId: "character-rafael", joinedAt: now },
-    ],
-    users: [
-      { id: currentUser.id, name: currentUser.name },
-      { id: "user-joao", name: "João" },
-      { id: "user-ana", name: "Ana" },
-      { id: "user-pedro", name: "Pedro" },
-    ],
-    characters: [
-      { id: characterId, campaignId, ownerUserId: currentUser.id, name: baseCharacter.name, data: baseCharacter, createdAt: now, updatedAt: now },
-      { id: "character-elias-varn", campaignId, ownerUserId: "user-joao", name: "Elias Varn", data: { ...clone(baseCharacter), name: "Elias Varn" }, createdAt: now, updatedAt: now },
-      { id: "character-luana", campaignId, ownerUserId: "user-ana", name: "Luana", data: { ...clone(baseCharacter), name: "Luana" }, createdAt: now, updatedAt: now },
-      { id: "character-rafael", campaignId, ownerUserId: "user-pedro", name: "Rafael", data: { ...clone(baseCharacter), name: "Rafael" }, createdAt: now, updatedAt: now },
-    ],
+    campaigns: [],
+    memberships: [],
+    users: [],
+    characters: [],
     customItems: [],
     campaignItems: [],
     homebrewItems: [],
@@ -141,7 +104,7 @@ function normalizeStore(store) {
   const storedCampaignItems = Array.isArray(store.campaignItems) ? store.campaignItems : [];
   const legacyCampaignItems = (Array.isArray(store.customItems) ? store.customItems : [])
     .filter((item) => item.campaignId)
-    .map((item) => ({ ...item, sourceType: "campaign", createdByUserId: item.createdByUserId || currentUser.id }));
+    .map((item) => ({ ...item, sourceType: "campaign", createdByUserId: item.createdByUserId || null }));
   const campaignItems = [...storedCampaignItems, ...legacyCampaignItems.filter((legacy) => !storedCampaignItems.some((item) => item.id === legacy.id))];
   const homebrewItems = Array.isArray(store.homebrewItems) ? store.homebrewItems : [];
   const campaignHomebrewItems = Array.isArray(store.campaignHomebrewItems) ? store.campaignHomebrewItems : [];
@@ -177,7 +140,6 @@ function normalizeStore(store) {
   });
   return {
     version: 1,
-    currentUser: store.currentUser || currentUser,
     campaigns: normalizedCampaigns,
     memberships: normalizedMemberships,
     users,
@@ -191,16 +153,16 @@ function normalizeStore(store) {
   };
 }
 
-export function loadCampaignStore(legacyCharacter) {
+export function loadCampaignStore() {
   try {
     const saved = window.localStorage.getItem(CAMPAIGN_STORAGE_KEY);
     const parsed = saved ? normalizeStore(JSON.parse(saved)) : null;
-    if (parsed?.campaigns?.length) return parsed;
-    const seeded = seedCampaignStore(legacyCharacter);
-    window.localStorage.setItem(CAMPAIGN_STORAGE_KEY, JSON.stringify(seeded));
-    return seeded;
+    if (parsed) return parsed;
+    const emptyStore = createEmptyStore();
+    window.localStorage.setItem(CAMPAIGN_STORAGE_KEY, JSON.stringify(emptyStore));
+    return emptyStore;
   } catch {
-    return seedCampaignStore(legacyCharacter);
+    return createEmptyStore();
   }
 }
 
@@ -215,7 +177,7 @@ export function saveCampaignStore(store) {
 }
 
 export function getUserById(store, userId) {
-  return store.users?.find((user) => user.id === userId) || (userId === currentUser.id ? currentUser : { id: userId, name: "Jogador" });
+  return store.users?.find((user) => user.id === userId) || { id: userId, name: "Jogador" };
 }
 
 export function getCampaignById(store, campaignId) {
@@ -261,7 +223,7 @@ export function findCampaignByJoinCode(store, code) {
   return (store.campaigns || []).find((campaign) => normalizeCampaignCode(campaign.joinCode) === normalizedCode) || null;
 }
 
-export function createCampaign(store, { name, user = currentUser }) {
+export function createCampaign(store, { name, user } = {}) {
   const trimmedName = String(name || "").trim();
   if (!trimmedName) return null;
   const now = new Date().toISOString();
@@ -276,7 +238,7 @@ export function createCampaign(store, { name, user = currentUser }) {
   return saveCampaignStore(next);
 }
 
-export function joinCampaignByCode(store, { code, user = currentUser }) {
+export function joinCampaignByCode(store, { code, user } = {}) {
   const normalizedCode = normalizeCampaignCode(code);
   if (normalizedCode.length !== 6) return { ok: false, reason: "invalid-code" };
   const campaign = findCampaignByJoinCode(store, normalizedCode);
@@ -304,7 +266,7 @@ function getMembershipForUser(store, userId, campaignId) {
   return (store.memberships || []).find((membership) => membership.userId === userId && membership.campaignId === campaignId) || null;
 }
 
-export function getPersonalCharactersForUser(store, userId = currentUser.id) {
+export function getPersonalCharactersForUser(store, userId) {
   return (store.personalCharacters || []).filter((character) => character.ownerUserId === userId);
 }
 
@@ -312,7 +274,7 @@ export function getPersonalCharacterById(store, personalCharacterId) {
   return (store.personalCharacters || []).find((character) => character.id === personalCharacterId) || null;
 }
 
-export function createPersonalCharacter(store, { ownerUserId = currentUser.id, data = {}, name } = {}) {
+export function createPersonalCharacter(store, { ownerUserId, data = {}, name } = {}) {
   const snapshot = characterDataSnapshot(data);
   const characterName = String(name || snapshot.name || "").trim();
   if (!characterName) return { ok: false, reason: "name-required" };
@@ -321,7 +283,7 @@ export function createPersonalCharacter(store, { ownerUserId = currentUser.id, d
   return { ok: true, personalCharacter, store: saveCampaignStore({ ...store, personalCharacters: [...(store.personalCharacters || []), personalCharacter] }) };
 }
 
-export function updatePersonalCharacter(store, { personalCharacterId, ownerUserId = currentUser.id, data = {}, name } = {}) {
+export function updatePersonalCharacter(store, { personalCharacterId, ownerUserId, data = {}, name } = {}) {
   const current = getPersonalCharacterById(store, personalCharacterId);
   if (!current || current.ownerUserId !== ownerUserId) return { ok: false, reason: "not-authorized" };
   const snapshot = characterDataSnapshot(data);
@@ -331,7 +293,7 @@ export function updatePersonalCharacter(store, { personalCharacterId, ownerUserI
   return { ok: true, personalCharacter: updated, store: saveCampaignStore({ ...store, personalCharacters: (store.personalCharacters || []).map((item) => item.id === current.id ? updated : item) }) };
 }
 
-export function deletePersonalCharacter(store, { personalCharacterId, ownerUserId = currentUser.id } = {}) {
+export function deletePersonalCharacter(store, { personalCharacterId, ownerUserId } = {}) {
   const current = getPersonalCharacterById(store, personalCharacterId);
   if (!current || current.ownerUserId !== ownerUserId) return { ok: false, reason: "not-authorized" };
   return { ok: true, store: saveCampaignStore({ ...store, personalCharacters: (store.personalCharacters || []).filter((item) => item.id !== personalCharacterId) }) };
@@ -342,7 +304,7 @@ export function canCreateCampaignCharacter(store, userId, campaignId) {
   return Boolean(membership && !membership.characterId);
 }
 
-export function createCampaignCharacter(store, { campaignId, ownerUserId = currentUser.id, data = {}, sourcePersonalCharacterId = null } = {}) {
+export function createCampaignCharacter(store, { campaignId, ownerUserId, data = {}, sourcePersonalCharacterId = null } = {}) {
   const membership = getMembershipForUser(store, ownerUserId, campaignId);
   if (!membership) return { ok: false, reason: "not-member" };
   if (membership.characterId || (store.characters || []).some((character) => character.campaignId === campaignId && character.ownerUserId === ownerUserId)) return { ok: false, reason: "character-exists" };
@@ -355,13 +317,13 @@ export function createCampaignCharacter(store, { campaignId, ownerUserId = curre
   return { ok: true, character, store: nextStore };
 }
 
-export function createCampaignCharacterFromPersonal(store, { campaignId, ownerUserId = currentUser.id, personalCharacterId } = {}) {
+export function createCampaignCharacterFromPersonal(store, { campaignId, ownerUserId, personalCharacterId } = {}) {
   const personal = getPersonalCharacterById(store, personalCharacterId);
   if (!personal || personal.ownerUserId !== ownerUserId) return { ok: false, reason: "not-authorized" };
   return createCampaignCharacter(store, { campaignId, ownerUserId, data: personal.snapshot, sourcePersonalCharacterId: personal.id });
 }
 
-export function saveCampaignCharacterAsPersonal(store, { characterId, ownerUserId = currentUser.id, personalCharacterId = null } = {}) {
+export function saveCampaignCharacterAsPersonal(store, { characterId, ownerUserId, personalCharacterId = null } = {}) {
   const character = getCharacterById(store, characterId);
   if (!character || character.ownerUserId !== ownerUserId) return { ok: false, reason: "not-authorized" };
   const snapshot = characterDataSnapshot(character.data || character);
@@ -410,7 +372,7 @@ function makeCampaignItem(payload, campaignId, createdByUserId) {
   };
 }
 
-export function createCampaignItem(store, { campaignId, createdByUserId = currentUser.id, ...payload }) {
+export function createCampaignItem(store, { campaignId, createdByUserId, ...payload }) {
   const name = String(payload.name || "").trim();
   if (!name) return { ok: false, reason: "name-required" };
   if (!getCampaignById(store, campaignId) || !isCampaignMember(store, createdByUserId, campaignId)) return { ok: false, reason: "not-member" };
@@ -446,7 +408,7 @@ export function canDeleteCampaignItem(store, userId, itemId) {
   return canEditCampaignItem(store, userId, itemId);
 }
 
-export function updateCampaignItem(store, { itemId, userId = currentUser.id, patch = {} }) {
+export function updateCampaignItem(store, { itemId, userId, patch = {} }) {
   const current = getCampaignItemById(store, itemId);
   if (!current || !canEditCampaignItem(store, userId, itemId)) return { ok: false, reason: "not-authorized" };
   const name = String(patch.name ?? current.name).trim();
@@ -456,16 +418,16 @@ export function updateCampaignItem(store, { itemId, userId = currentUser.id, pat
   return { ok: true, item: updated, store: nextStore };
 }
 
-export function deleteCampaignItem(store, { itemId, userId = currentUser.id }) {
+export function deleteCampaignItem(store, { itemId, userId }) {
   if (!getCampaignItemById(store, itemId) || !canDeleteCampaignItem(store, userId, itemId)) return { ok: false, reason: "not-authorized" };
   return { ok: true, store: saveCampaignStore({ ...store, campaignItems: store.campaignItems.filter((item) => item.id !== itemId) }) };
 }
 
-export function getHomebrewsForUser(store, userId = currentUser.id) {
+export function getHomebrewsForUser(store, userId) {
   return (store.homebrewItems || []).filter((item) => item.ownerUserId === userId);
 }
 
-export function createHomebrew(store, { ownerUserId = currentUser.id, ...payload }) {
+export function createHomebrew(store, { ownerUserId, ...payload }) {
   const name = String(payload.name || "").trim();
   if (!name) return { ok: false, reason: "name-required" };
   const now = new Date().toISOString();
@@ -481,7 +443,7 @@ export function createHomebrew(store, { ownerUserId = currentUser.id, ...payload
   return { ok: true, item, store: nextStore };
 }
 
-export function updateHomebrew(store, { homebrewItemId, ownerUserId = currentUser.id, patch = {} }) {
+export function updateHomebrew(store, { homebrewItemId, ownerUserId, patch = {} }) {
   const current = (store.homebrewItems || []).find((item) => item.id === homebrewItemId);
   if (!current || current.ownerUserId !== ownerUserId) return { ok: false, reason: "not-owner" };
   const name = String(patch.name ?? current.name).trim();
@@ -491,7 +453,7 @@ export function updateHomebrew(store, { homebrewItemId, ownerUserId = currentUse
   return { ok: true, item: updated, store: nextStore };
 }
 
-export function deleteHomebrew(store, { homebrewItemId, ownerUserId = currentUser.id }) {
+export function deleteHomebrew(store, { homebrewItemId, ownerUserId }) {
   const item = (store.homebrewItems || []).find((entry) => entry.id === homebrewItemId);
   if (!item || item.ownerUserId !== ownerUserId) return { ok: false, reason: "not-owner" };
   const nextStore = saveCampaignStore({
@@ -524,7 +486,7 @@ function createCampaignHomebrewLink(store, { campaignId, homebrewItemId, addedBy
   };
 }
 
-export function addHomebrewToCampaign(store, { campaignId, homebrewItemId, userId = currentUser.id }) {
+export function addHomebrewToCampaign(store, { campaignId, homebrewItemId, userId }) {
   if (!isCampaignMaster(store, userId, campaignId)) return { ok: false, reason: "master-only" };
   const source = (store.homebrewItems || []).find((item) => item.id === homebrewItemId && item.ownerUserId === userId);
   if (!source) return { ok: false, reason: "not-owner" };
@@ -534,7 +496,7 @@ export function addHomebrewToCampaign(store, { campaignId, homebrewItemId, userI
   return { ok: true, added: true, link, store: nextStore };
 }
 
-export function requestHomebrewForCampaign(store, { campaignId, homebrewItemId, userId = currentUser.id }) {
+export function requestHomebrewForCampaign(store, { campaignId, homebrewItemId, userId }) {
   if (!getCampaignById(store, campaignId) || !isCampaignMember(store, userId, campaignId)) return { ok: false, reason: "not-member" };
   if (isCampaignMaster(store, userId, campaignId)) return addHomebrewToCampaign(store, { campaignId, homebrewItemId, userId });
   const source = (store.homebrewItems || []).find((item) => item.id === homebrewItemId && item.ownerUserId === userId);
@@ -546,7 +508,7 @@ export function requestHomebrewForCampaign(store, { campaignId, homebrewItemId, 
   return { ok: true, requested: true, request, store: nextStore };
 }
 
-export function getHomebrewCampaignStatuses(store, homebrewItemId, userId = currentUser.id) {
+export function getHomebrewCampaignStatuses(store, homebrewItemId, userId) {
   return getCampaignsForUser(store, userId).map((campaign) => ({
     campaign,
     role: campaign.role,
@@ -561,7 +523,7 @@ export function getPendingHomebrewRequests(store, campaignId) {
     .filter((request) => request.item);
 }
 
-export function approveHomebrewRequest(store, { requestId, reviewedByUserId = currentUser.id }) {
+export function approveHomebrewRequest(store, { requestId, reviewedByUserId }) {
   const request = (store.homebrewRequests || []).find((entry) => entry.id === requestId);
   if (!request || request.status !== "pending") return { ok: false, reason: "not-pending" };
   if (!isCampaignMaster(store, reviewedByUserId, request.campaignId)) return { ok: false, reason: "master-only" };
@@ -575,7 +537,7 @@ export function approveHomebrewRequest(store, { requestId, reviewedByUserId = cu
   return { ok: true, link, store: nextStore };
 }
 
-export function rejectHomebrewRequest(store, { requestId, reviewedByUserId = currentUser.id }) {
+export function rejectHomebrewRequest(store, { requestId, reviewedByUserId }) {
   const request = (store.homebrewRequests || []).find((entry) => entry.id === requestId);
   if (!request || request.status !== "pending") return { ok: false, reason: "not-pending" };
   if (!isCampaignMaster(store, reviewedByUserId, request.campaignId)) return { ok: false, reason: "master-only" };
@@ -624,7 +586,7 @@ export function resolveInventoryItemDefinition(inventoryItem, store) {
   return itemCatalog.find((item) => item.id === inventoryItem.catalogItemId) || null;
 }
 
-export function deleteCampaign(store, { campaignId, userId = currentUser.id }) {
+export function deleteCampaign(store, { campaignId, userId }) {
   if (!isCampaignMaster(store, userId, campaignId)) return { ok: false, reason: "master-only" };
   const characterIds = new Set((store.characters || []).filter((character) => character.campaignId === campaignId).map((character) => character.id));
   const nextStore = saveCampaignStore({

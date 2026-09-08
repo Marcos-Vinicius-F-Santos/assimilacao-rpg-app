@@ -1,5 +1,128 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
+.auth-page {
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 28px 18px;
+    color: #4c392c;
+    background: #eee6d1;
+    background-image: radial-gradient(circle at 18% 13%, #fff9 0 2px, transparent 3px), linear-gradient(100deg, #eee6d1, #f4ecd9 48%, #e8ddc6)
+}
+
+.auth-card {
+    width: min(100%, 440px);
+    padding: 38px 40px;
+    border: 1px solid #c7b99d;
+    box-shadow: 0 18px 45px #0003;
+    background: #f6eddc;
+    text-align: center
+}
+
+.auth-card .campaign-brand {
+    margin-bottom: 12px;
+    color: #6f4135;
+    font: 700 15px 'Space Grotesk';
+    letter-spacing: .12em
+}
+
+.auth-card h1 {
+    margin: 10px 0 8px;
+    color: #5e4637;
+    font: 700 28px 'Space Grotesk'
+}
+
+.auth-card p {
+    margin: 0 0 20px;
+    color: #806a58;
+    line-height: 1.5
+}
+
+.auth-card small {
+    display: block;
+    color: #927b67;
+    line-height: 1.5
+}
+
+.auth-card code {
+    color: #6f4135;
+    font-size: .9em
+}
+
+.auth-form {
+    display: grid;
+    gap: 13px;
+    margin-top: 22px;
+    text-align: left
+}
+
+.auth-form label {
+    display: grid;
+    gap: 6px;
+    color: #735947;
+    font-size: 12px
+}
+
+.auth-form input {
+    width: 100%;
+    border: 1px solid #b69a79;
+    border-radius: 3px;
+    padding: 10px 11px;
+    background: #fffaf0;
+    color: #4e3b2f;
+    outline: none
+}
+
+.auth-form input:focus {
+    border-color: #815342;
+    box-shadow: 0 0 0 2px #81534222
+}
+
+.auth-form .campaign-primary-btn {
+    justify-content: center;
+    margin-top: 5px
+}
+
+.auth-form-error,
+.auth-form-notice {
+    margin: 0 !important;
+    padding: 9px 10px;
+    border-radius: 3px;
+    font-size: 12px
+}
+
+.auth-form-error {
+    color: #7d302b !important;
+    background: #f2d8d0
+}
+
+.auth-form-notice {
+    color: #385d4f !important;
+    background: #dcead9
+}
+
+.auth-mode-toggle {
+    margin-top: 20px;
+    border-bottom: 1px solid transparent;
+    background: transparent;
+    color: #7a5040;
+    font-size: 12px
+}
+
+.auth-mode-toggle:hover {
+    border-bottom-color: #7a5040
+}
+
+.auth-page--loading .auth-card h1 {
+    font-size: 20px
+}
+
+@media (max-width: 520px) {
+    .auth-card {
+        padding: 30px 22px
+    }
+}
+
 .embedded-section {
     border-top: 1px solid var(--line);
     margin-top: 34px;

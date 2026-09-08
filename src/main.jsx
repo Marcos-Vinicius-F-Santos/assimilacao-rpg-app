@@ -56,7 +56,6 @@ import {
   itemCategoryLabels,
 } from "./inventoryCatalog";
 import {
-  CAMPAIGN_STORAGE_KEY,
   addHomebrewToCampaign,
   approveHomebrewRequest,
   canViewCharacter,
@@ -66,13 +65,11 @@ import {
   canEditCampaignItem,
   createCampaignItem,
   createInventoryItemInstance,
-  createCampaign,
   createHomebrew,
   deleteCampaignItem,
   deleteHomebrew,
   getCampaignAvailableItems,
   getAssimilations,
-  joinCampaignByCode,
   getCampaignById,
   getCampaignMemberships,
   getCampaignRole,
@@ -91,7 +88,6 @@ import {
   requestHomebrewForCampaign,
   updateCampaignItem,
   updateHomebrew,
-  currentUser,
   updateCharacterRecord,
   canCreateCampaignCharacter,
   createCampaignCharacter,
@@ -103,6 +99,8 @@ import {
   saveCampaignCharacterAsPersonal,
   updatePersonalCharacter,
 } from "./campaignService";
+import { AuthProvider, useAuth } from "./auth/AuthProvider";
+import { createCampaign as createRemoteCampaign, getCampaignState, joinCampaignByCode as joinRemoteCampaignByCode } from "./services/campaignService";
 import {
   creationInstinctNames,
   creationKnowledgeNames,
@@ -156,20 +154,6 @@ const defaultHealthLevels = [
   { label: 'Debilitação', level: 2, tone: 'red', description: ['Incapaz de agir,', 'mas mantém a consciência.', 'Menos ☠☠ em todos os testes.'] },
   { label: 'Incapacitação', level: 1, tone: 'red', description: ['Inconsciente.', 'Qualquer Ação com teste', 'exige ☠ para ativar.'] },
 ];
-
-const initialCharacter = {
-  name: "Luana Ferreira",
-  origin: "Horto da Nascente",
-  event: "A escolha de partir",
-  generation: "1ª geração",
-  occupation: "Batedora",
-  purposes: ["Entender o que está mudando", "Construir uma família"],
-  health: 4,
-  maxHealth: 6,
-  determination: { level: 5, points: 3 },
-  assimilation: { level: 5, points: 2 },
-  characterCharacteristics: [],
-};
 
 const TUG_TOTAL_LEVEL = 10;
 const TUG_MIN_LEVEL = 1;
@@ -281,7 +265,6 @@ function restoreAssimilationPoints(character, amount = 1) {
 }
 
 const ROLL_HISTORY_STORAGE_KEY = "assimilation-roll-history";
-const CHARACTER_STORAGE_KEY = "assimilation-character-sheet";
 const symbolAssets = {
   success: ladyBeetleSymbolAsset,
   failure: owlSymbolAsset,
@@ -487,16 +470,6 @@ function normalizeInventoryItem(item, index = 0, definition = null) {
 }
 
 
-function readLegacyCharacter() {
-  try {
-    const saved = window.localStorage.getItem(CHARACTER_STORAGE_KEY);
-    const parsed = saved ? JSON.parse(saved) : null;
-    return parsed && typeof parsed === "object" ? { ...initialCharacter, ...parsed } : initialCharacter;
-  } catch {
-    return initialCharacter;
-  }
-}
-
 function parseAppRoute(pathname = window.location.pathname) {
   const parts = pathname.split("/").filter(Boolean);
   if (parts.length === 1 && parts[0] === "homebrew") return { type: "homebrew" };
@@ -513,24 +486,42 @@ function parseAppRoute(pathname = window.location.pathname) {
   return { type: "not-found" };
 }
 
-function App() {
-  const [campaignStore, setCampaignStore] = useState(() => loadCampaignStore(readLegacyCharacter()));
+function mergeRemoteCampaignState(store, remoteState) {
+  return { ...store, campaigns: remoteState.campaigns, memberships: remoteState.memberships, users: remoteState.users };
+}
+
+function AuthenticatedApp({ user, onSignOut }) {
+  const [campaignStore, setCampaignStore] = useState(() => loadCampaignStore());
   const [route, setRoute] = useState(() => parseAppRoute());
   const [mobileMenu, setMobileMenu] = useState(false);
   const [toast, setToast] = useState("");
+  const [remoteLoading, setRemoteLoading] = useState(true);
+  const [remoteError, setRemoteError] = useState("");
 
   const notify = (message) => {
     setToast(message);
     window.setTimeout(() => setToast(""), 2200);
   };
 
+  const refreshCampaignState = async () => {
+    const remoteState = await getCampaignState(user.id);
+    setCampaignStore((current) => mergeRemoteCampaignState(current, remoteState));
+    return remoteState;
+  };
+
   useEffect(() => {
-    try {
-      window.localStorage.setItem(CAMPAIGN_STORAGE_KEY, JSON.stringify(campaignStore));
-    } catch {
-      // A navegação continua utilizável mesmo quando o armazenamento está indisponível.
-    }
-  }, [campaignStore]);
+    let active = true;
+    setRemoteLoading(true);
+    setRemoteError("");
+    refreshCampaignState()
+      .catch((error) => {
+        if (active) setRemoteError(error.message || "Não foi possível carregar suas campanhas.");
+      })
+      .finally(() => {
+        if (active) setRemoteLoading(false);
+      });
+    return () => { active = false; };
+  }, [user.id]);
 
   useEffect(() => {
     const onPopState = () => setRoute(parseAppRoute());
@@ -545,49 +536,58 @@ function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const handleCreateCampaign = (name) => {
-    const nextStore = createCampaign(campaignStore, { name, user: currentUser });
-    if (!nextStore) return false;
-    setCampaignStore(nextStore);
-    const created = nextStore.campaigns[nextStore.campaigns.length - 1];
-    navigate(`/campaigns/${created.id}`);
-    return true;
+  const handleCreateCampaign = async (name) => {
+    try {
+      const result = await createRemoteCampaign(name);
+      await refreshCampaignState();
+      navigate(`/campaigns/${result.campaign.id}`);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, reason: error.message || "Não foi possível criar a campanha." };
+    }
   };
 
-  const handleJoinCampaign = (code) => {
-    const result = joinCampaignByCode(campaignStore, { code, user: currentUser });
-    if (!result.ok) return result;
-    if (result.store) setCampaignStore(result.store);
-    navigate(`/campaigns/${result.campaignId}`);
-    return result;
+  const handleJoinCampaign = async (code) => {
+    try {
+      const result = await joinRemoteCampaignByCode(code);
+      await refreshCampaignState();
+      navigate(`/campaigns/${result.campaign.id}`);
+      return { ok: true };
+    } catch (error) {
+      const message = error.message || "Não foi possível entrar na campanha.";
+      return { ok: false, reason: message.includes("campaign-not-found") ? "not-found" : message };
+    }
   };
+
+  if (remoteLoading) return <AuthLoadingPage label="Carregando suas campanhas..." />;
+  if (remoteError) return <RemoteSetupPage message={remoteError} onSignOut={onSignOut} />;
 
   let page;
   if (route.type === "campaigns") {
-    page = <CampaignListPage store={campaignStore} user={currentUser} onOpenCampaign={(id) => navigate(`/campaigns/${id}`)} onOpenCharacters={() => navigate("/characters")} onOpenHomebrew={() => navigate("/homebrew")} onCreateCampaign={handleCreateCampaign} onJoinCampaign={handleJoinCampaign} />;
+    page = <CampaignListPage store={campaignStore} user={user} onOpenCampaign={(id) => navigate(`/campaigns/${id}`)} onOpenCharacters={() => navigate("/characters")} onOpenHomebrew={() => navigate("/homebrew")} onCreateCampaign={handleCreateCampaign} onJoinCampaign={handleJoinCampaign} onSignOut={onSignOut} />;
   } else if (route.type === "personal-characters") {
-    page = <PersonalCharactersPage store={campaignStore} setStore={setCampaignStore} user={currentUser} onBack={() => navigate("/")} onOpenCharacter={(id) => navigate(`/characters/${id}`)} onCreate={() => navigate("/characters/new")} />;
+    page = <PersonalCharactersPage store={campaignStore} setStore={setCampaignStore} user={user} onBack={() => navigate("/")} onOpenCharacter={(id) => navigate(`/characters/${id}`)} onCreate={() => navigate("/characters/new")} />;
   } else if (route.type === "personal-create") {
-    page = <CharacterCreationPage store={campaignStore} setStore={setCampaignStore} user={currentUser} mode="personal" onCancel={() => navigate("/characters")} onComplete={(id) => navigate(`/characters/${id}`)} />;
+    page = <CharacterCreationPage store={campaignStore} setStore={setCampaignStore} user={user} mode="personal" onCancel={() => navigate("/characters")} onComplete={(id) => navigate(`/characters/${id}`)} />;
   } else if (route.type === "personal-character") {
-    page = <PersonalCharacterPage store={campaignStore} setStore={setCampaignStore} user={currentUser} personalCharacterId={route.personalCharacterId} onBack={() => navigate("/characters")} onNavigate={navigate} notify={notify} mobileMenu={mobileMenu} setMobileMenu={setMobileMenu} />;
+    page = <PersonalCharacterPage store={campaignStore} setStore={setCampaignStore} user={user} personalCharacterId={route.personalCharacterId} onBack={() => navigate("/characters")} onNavigate={navigate} notify={notify} mobileMenu={mobileMenu} setMobileMenu={setMobileMenu} />;
   } else if (route.type === "homebrew") {
-    page = <HomebrewPage store={campaignStore} setStore={setCampaignStore} user={currentUser} onBack={() => navigate("/")} onOpenCharacters={() => navigate("/characters")} onOpenCampaign={(id) => navigate(`/campaigns/${id}`)} notify={notify} />;
+    page = <HomebrewPage store={campaignStore} setStore={setCampaignStore} user={user} onBack={() => navigate("/")} onOpenCharacters={() => navigate("/characters")} onOpenCampaign={(id) => navigate(`/campaigns/${id}`)} notify={notify} />;
   } else if (route.type === "campaign") {
-    page = <CampaignPage store={campaignStore} setStore={setCampaignStore} user={currentUser} campaignId={route.campaignId} onBack={() => navigate("/")} onOpenItems={(id) => navigate(`/campaigns/${id}/items`)} onOpenCharacteristics={(id) => navigate(`/campaigns/${id}/characteristics`)} onOpenAssimilations={(id) => navigate(`/campaigns/${id}/assimilations`)} onOpenCharacter={(campaignId, characterId) => navigate(`/campaigns/${campaignId}/characters/${characterId}`)} onCreateCharacter={(id) => navigate(`/campaigns/${id}/characters/new`)} onUsePersonal={(id) => { const personal = getPersonalCharacterById(campaignStore, id); if (!personal || !window.confirm(`Usar ${personal.name} nesta campanha? Isso criará uma cópia independente.`)) return; const result = createCampaignCharacterFromPersonal(campaignStore, { campaignId: route.campaignId, ownerUserId: currentUser.id, personalCharacterId: id }); if (result.ok) { setCampaignStore(result.store); navigate(`/campaigns/${route.campaignId}/characters/${result.character.id}`); } }} />;
+    page = <CampaignPage store={campaignStore} setStore={setCampaignStore} user={user} campaignId={route.campaignId} onBack={() => navigate("/")} onOpenItems={(id) => navigate(`/campaigns/${id}/items`)} onOpenCharacteristics={(id) => navigate(`/campaigns/${id}/characteristics`)} onOpenAssimilations={(id) => navigate(`/campaigns/${id}/assimilations`)} onOpenCharacter={(campaignId, characterId) => navigate(`/campaigns/${campaignId}/characters/${characterId}`)} onCreateCharacter={(id) => navigate(`/campaigns/${id}/characters/new`)} onUsePersonal={(id) => { const personal = getPersonalCharacterById(campaignStore, id); if (!personal || !window.confirm(`Usar ${personal.name} nesta campanha? Isso criará uma cópia independente.`)) return; const result = createCampaignCharacterFromPersonal(campaignStore, { campaignId: route.campaignId, ownerUserId: user.id, personalCharacterId: id }); if (result.ok) { setCampaignStore(result.store); navigate(`/campaigns/${route.campaignId}/characters/${result.character.id}`); } }} />;
   } else if (route.type === "campaign-items") {
-    page = <CampaignItemsPage store={campaignStore} setStore={setCampaignStore} user={currentUser} campaignId={route.campaignId} onBack={() => navigate(`/campaigns/${route.campaignId}`)} notify={notify} />;
+    page = <CampaignItemsPage store={campaignStore} setStore={setCampaignStore} user={user} campaignId={route.campaignId} onBack={() => navigate(`/campaigns/${route.campaignId}`)} notify={notify} />;
   } else if (route.type === "campaign-characteristics") {
-    page = <CampaignCharacteristicsPage store={campaignStore} user={currentUser} campaignId={route.campaignId} onBack={() => navigate(`/campaigns/${route.campaignId}`)} />;
+    page = <CampaignCharacteristicsPage store={campaignStore} user={user} campaignId={route.campaignId} onBack={() => navigate(`/campaigns/${route.campaignId}`)} />;
   } else if (route.type === "campaign-assimilations") {
-    page = <CampaignAssimilationsPage store={campaignStore} user={currentUser} campaignId={route.campaignId} onBack={() => navigate(`/campaigns/${route.campaignId}`)} />;
+    page = <CampaignAssimilationsPage store={campaignStore} user={user} campaignId={route.campaignId} onBack={() => navigate(`/campaigns/${route.campaignId}`)} />;
   } else if (route.type === "campaign-character-create") {
     const campaign = getCampaignById(campaignStore, route.campaignId);
-    page = campaign && canCreateCampaignCharacter(campaignStore, currentUser.id, route.campaignId)
-      ? <CharacterCreationPage store={campaignStore} setStore={setCampaignStore} user={currentUser} campaign={campaign} mode="campaign" onCancel={() => navigate(`/campaigns/${route.campaignId}`)} onComplete={(id) => navigate(`/campaigns/${route.campaignId}/characters/${id}`)} />
+    page = campaign && canCreateCampaignCharacter(campaignStore, user.id, route.campaignId)
+      ? <CharacterCreationPage store={campaignStore} setStore={setCampaignStore} user={user} campaign={campaign} mode="campaign" onCancel={() => navigate(`/campaigns/${route.campaignId}`)} onComplete={(id) => navigate(`/campaigns/${route.campaignId}/characters/${id}`)} />
       : <CampaignAccessMessage title="Criação indisponível" description="Você já possui uma ficha nesta campanha ou não participa dela." onBack={() => navigate(`/campaigns/${route.campaignId}`)} />;
   } else if (route.type === "character") {
-    page = <CharacterPage store={campaignStore} setStore={setCampaignStore} user={currentUser} campaignId={route.campaignId} characterId={route.characterId} onBack={() => navigate(`/campaigns/${route.campaignId}`)} onNavigate={navigate} notify={notify} mobileMenu={mobileMenu} setMobileMenu={setMobileMenu} />;
+    page = <CharacterPage store={campaignStore} setStore={setCampaignStore} user={user} campaignId={route.campaignId} characterId={route.characterId} onBack={() => navigate(`/campaigns/${route.campaignId}`)} onNavigate={navigate} notify={notify} mobileMenu={mobileMenu} setMobileMenu={setMobileMenu} />;
   } else {
     page = <CampaignAccessMessage title="Página não encontrada" description="A rota solicitada não existe nesta campanha." onBack={() => navigate("/")} />;
   }
@@ -605,7 +605,50 @@ function App() {
   );
 }
 
-function CampaignListPage({ store, user, onOpenCampaign, onOpenCharacters, onOpenHomebrew, onCreateCampaign, onJoinCampaign }) {
+function App() {
+  const auth = useAuth();
+  if (auth.loading) return <AuthLoadingPage label="Restaurando sua sessão..." />;
+  if (!auth.configured) return <SupabaseSetupPage />;
+  if (!auth.user) return <LoginPage signIn={auth.signIn} signUp={auth.signUp} />;
+  return <AuthenticatedApp user={auth.user} onSignOut={auth.signOut} />;
+}
+
+function AuthLoadingPage({ label }) {
+  return <main className="auth-page auth-page--loading"><div className="auth-card"><div className="campaign-brand">∿ ASSIMILAÇÃO</div><span className="eyebrow">AUTENTICAÇÃO</span><h1>{label}</h1></div></main>;
+}
+
+function SupabaseSetupPage() {
+  return <main className="auth-page"><section className="auth-card"><div className="campaign-brand">∿ ASSIMILAÇÃO</div><span className="eyebrow">CONFIGURAÇÃO NECESSÁRIA</span><h1>Conecte o Supabase</h1><p>Adicione <code>VITE_SUPABASE_URL</code> e <code>VITE_SUPABASE_ANON_KEY</code> ao arquivo <code>.env.local</code> para ativar o acesso.</p><small>O arquivo <code>.env.local</code> não deve ser enviado ao Git.</small></section></main>;
+}
+
+function RemoteSetupPage({ message, onSignOut }) {
+  return <main className="auth-page"><section className="auth-card"><div className="campaign-brand">∿ ASSIMILAÇÃO</div><span className="eyebrow">BANCO DE DADOS</span><h1>Não foi possível carregar suas campanhas</h1><p>{message}</p><small>Confirme se a migration da fundação foi aplicada no projeto Supabase.</small><button type="button" className="campaign-secondary-btn" onClick={onSignOut}>Sair</button></section></main>;
+}
+
+function LoginPage({ signIn, signUp }) {
+  const [mode, setMode] = useState("signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const submit = async (event) => {
+    event.preventDefault();
+    setError("");
+    setNotice("");
+    const result = mode === "signin"
+      ? await signIn(email, password)
+      : await signUp(email, password, displayName);
+    if (result.error) {
+      setError(result.error.message || "Não foi possível concluir o acesso.");
+    } else if (mode === "signup" && !result.data?.session) {
+      setNotice("Conta criada. Verifique seu email para confirmar o acesso.");
+    }
+  };
+  return <main className="auth-page"><section className="auth-card"><div className="campaign-brand">∿ ASSIMILAÇÃO</div><span className="eyebrow">CAMPANHAS VIVAS</span><h1>{mode === "signin" ? "Entrar" : "Criar conta"}</h1><p>{mode === "signin" ? "Entre para acessar suas campanhas e fichas." : "Crie seu acesso para jogar com outras pessoas."}</p><form className="auth-form" onSubmit={submit}>{mode === "signup" && <label>Nome de exibição<input required value={displayName} onChange={(event) => setDisplayName(event.target.value)} autoComplete="name" /></label>}<label>Email<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" /></label><label>Senha<input required type="password" minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === "signin" ? "current-password" : "new-password"} /></label>{error && <p className="auth-form-error" role="alert">{error}</p>}{notice && <p className="auth-form-notice" role="status">{notice}</p>}<button type="submit" className="campaign-primary-btn">{mode === "signin" ? "Entrar" : "Criar conta"}</button></form><button type="button" className="auth-mode-toggle" onClick={() => { setMode(mode === "signin" ? "signup" : "signin"); setError(""); setNotice(""); }}>{mode === "signin" ? "Ainda não tenho conta" : "Já tenho uma conta"}</button></section></main>;
+}
+
+function CampaignListPage({ store, user, onOpenCampaign, onOpenCharacters, onOpenHomebrew, onCreateCampaign, onJoinCampaign, onSignOut }) {
   const [modalStep, setModalStep] = useState(null);
   const [name, setName] = useState("");
   const [joinCode, setJoinCode] = useState("");
@@ -635,15 +678,18 @@ function CampaignListPage({ store, user, onOpenCampaign, onOpenCharacters, onOpe
     setJoinError("");
     setModalStep(step);
   };
-  const submitCreate = (event) => {
+  const submitCreate = async (event) => {
     event.preventDefault();
-    if (onCreateCampaign(name)) {
+    const result = await onCreateCampaign(name);
+    if (result.ok) {
       closeModal();
+    } else {
+      setJoinError(result.reason || "Não foi possível criar a campanha.");
     }
   };
-  const submitJoin = (event) => {
+  const submitJoin = async (event) => {
     event.preventDefault();
-    const result = onJoinCampaign(joinCode);
+    const result = await onJoinCampaign(joinCode);
     if (!result.ok) {
       setJoinError(result.reason === "not-found" ? "Campanha não encontrada." : "Informe um código válido de 6 caracteres.");
     }
@@ -651,7 +697,7 @@ function CampaignListPage({ store, user, onOpenCampaign, onOpenCharacters, onOpe
   return <div className="campaign-page campaign-list-page">
     <header className="campaign-page-header">
       <div><div className="campaign-brand">∿ ASSIMILAÇÃO</div><span className="eyebrow">CAMPANHAS VIVAS</span><h1>Minhas campanhas</h1><p>Escolha uma mesa para abrir seus participantes e personagens.</p></div>
-      <button type="button" className="campaign-primary-btn" onClick={() => chooseStep("choice")}><Plus size={16} /> Nova campanha</button>
+      <div className="campaign-page-header-actions"><button type="button" className="campaign-secondary-btn" onClick={onSignOut}>Sair</button><button type="button" className="campaign-primary-btn" onClick={() => chooseStep("choice")}><Plus size={16} /> Nova campanha</button></div>
     </header>
     <main className="campaign-page-content">
       <nav className="campaign-home-nav" aria-label="Navegação da área de campanhas"><button type="button" className="is-active">Minhas campanhas</button><button type="button" onClick={onOpenCharacters}>Personagens</button><button type="button" onClick={onOpenHomebrew}>Homebrew</button></nav>
@@ -2184,4 +2230,4 @@ function InventoryItemModal({ editor, setEditor, onSave, countFor, capacityFor, 
   );
 }
 
-createRoot(document.getElementById("root")).render(<App />);
+createRoot(document.getElementById("root")).render(<AuthProvider><App /></AuthProvider>);
