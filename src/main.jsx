@@ -618,7 +618,7 @@ function AuthLoadingPage({ label }) {
 }
 
 function SupabaseSetupPage() {
-  return <main className="auth-page"><section className="auth-card"><div className="campaign-brand">∿ ASSIMILAÇÃO</div><span className="eyebrow">CONFIGURAÇÃO NECESSÁRIA</span><h1>Conecte o Supabase</h1><p>Adicione <code>VITE_SUPABASE_URL</code> e <code>VITE_SUPABASE_ANON_KEY</code> ao arquivo <code>.env.local</code> para ativar o acesso.</p><small>O arquivo <code>.env.local</code> não deve ser enviado ao Git.</small></section></main>;
+  return <main className="auth-page"><section className="auth-card"><div className="campaign-brand">∿ ASSIMILAÇÃO</div><span className="eyebrow">CONFIGURAÇÃO NECESSÁRIA</span><h1>Conecte o Supabase</h1><p>Adicione <code>VITE_SUPABASE_URL</code> e <code>VITE_SUPABASE_PUBLISHABLE_KEY</code> ao arquivo <code>.env.local</code> para ativar o acesso.</p><small>O arquivo <code>.env.local</code> não deve ser enviado ao Git.</small></section></main>;
 }
 
 function RemoteSetupPage({ message, onSignOut }) {
