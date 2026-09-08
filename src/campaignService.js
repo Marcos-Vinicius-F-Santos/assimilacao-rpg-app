@@ -168,8 +168,22 @@ export function loadCampaignStore() {
 
 export function saveCampaignStore(store) {
   const normalized = normalizeStore(store);
+  let legacySharedState = { campaigns: [], memberships: [], users: [] };
   try {
-    window.localStorage.setItem(CAMPAIGN_STORAGE_KEY, JSON.stringify(normalized));
+    const saved = window.localStorage.getItem(CAMPAIGN_STORAGE_KEY);
+    const parsed = saved ? JSON.parse(saved) : null;
+    if (parsed && typeof parsed === "object") {
+      legacySharedState = {
+        campaigns: Array.isArray(parsed.campaigns) ? parsed.campaigns : [],
+        memberships: Array.isArray(parsed.memberships) ? parsed.memberships : [],
+        users: Array.isArray(parsed.users) ? parsed.users : [],
+      };
+    }
+  } catch {
+    // Os dados locais restantes continuam utilizáveis mesmo quando o cache antigo está indisponível.
+  }
+  try {
+    window.localStorage.setItem(CAMPAIGN_STORAGE_KEY, JSON.stringify({ ...normalized, ...legacySharedState }));
   } catch {
     // A ficha continua utilizável mesmo quando o armazenamento está indisponível.
   }
