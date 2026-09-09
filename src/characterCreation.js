@@ -1,3 +1,5 @@
+import { createInitialAssimilationDraft, groupAssimilationAcquisitions, validateInitialAssimilation } from "./initialAssimilation.js";
+
 export const creationSteps = [
   { id: "identity", label: "Nome" },
   { id: "origins", label: "Origens" },
@@ -45,6 +47,7 @@ export function createCharacterCreationDraft({ campaignId = null, startingDeterm
     baseAptitudes: { instincts: valuesFor(creationInstinctNames, 1), knowledge: valuesFor(creationKnowledgeNames, 0), practices: valuesFor(creationPracticeNames, 0) },
     xpUpgrades: { knowledge: valuesFor(creationKnowledgeNames, 0), practices: valuesFor(creationPracticeNames, 0) },
     tug: { determinationLevel, assimilationLevel: 10 - determinationLevel },
+    initialAssimilation: createInitialAssimilationDraft(10 - determinationLevel),
     characteristics: { selected: [], choices: {} },
     equipment: { packageId: "", choiceIds: [], extraIds: [] },
     xp: { initial: 7, spentOnCharacteristics: 0, spentOnAptitudes: 0 },
@@ -122,6 +125,7 @@ export function validateCreationDraft(draft, catalog = []) {
   if ((draft?.purposes?.personal || []).some((purpose) => !purpose.trim())) errors.push("Preencha os dois Propósitos Pessoais.");
   if ((draft?.purposes?.collective || []).some((purpose) => !purpose.trim())) errors.push("Preencha os dois Propósitos Coletivos.");
   errors.push(...validateCreationInstincts(draft), ...validateCreationLearnedAptitudes(draft), ...validateCreationCharacteristics(draft, catalog), ...validateCreationEquipment(draft));
+  errors.push(...validateInitialAssimilation(draft?.initialAssimilation, getStartingTug(draft).assimilationLevel));
   if (getXpSpent(draft) > 7) errors.push("O XP restante não pode ficar negativo.");
   return [...new Set(errors)];
 }
@@ -136,6 +140,8 @@ export function buildCharacterDataFromDraft(draft) {
   const tug = getStartingTug(draft);
   const health = getCreationHealth(draft);
   const selected = draft?.characteristics?.selected || [];
+  const initialAssimilation = draft?.initialAssimilation || createInitialAssimilationDraft(tug.assimilationLevel);
+  const initialTest = initialAssimilation.test?.result ? { ...initialAssimilation.test, result: { ...initialAssimilation.test.result } } : null;
   return {
     name: draft.identity.name.trim(),
     concept: draft.identity.concept.trim(),
@@ -157,11 +163,12 @@ export function buildCharacterDataFromDraft(draft) {
     maxHealth: health,
     healthByLevel: { healthy: health, wounded: health, laceration: health, injuries: health, debilitated: health, incapacitated: health },
     characterCharacteristics: selected.map((characteristicId) => ({ characteristicId, choices: draft.characteristics.choices[characteristicId] || {} })),
-    characterAssimilations: [],
+    characterAssimilations: groupAssimilationAcquisitions(initialAssimilation.acquisitions || []),
+    initialAssimilationTest: initialTest,
     initialEquipmentIds: getSelectedEquipmentIds(draft),
     startingEquipmentPackage: draft.equipment.packageId,
     creationCompleted: true,
-    pendingInitialAssimilation: tug.assimilationLevel > 1,
+    pendingInitialAssimilation: false,
     initialXp: 7,
     spentXp: getXpSpent(draft),
   };
