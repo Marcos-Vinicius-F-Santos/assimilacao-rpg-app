@@ -3979,3 +3979,14 @@ html,
     transform: scale(1.18);
   }
 }
+
+/* A ficha mantém os cartões de aptidão como leitura quando a rolagem está desligada. */
+.paper-attribute:not(.rolling-selectable):hover,
+.paper-attribute:not(.rolling-selectable):focus-visible {
+  background: #f5ecd8;
+  outline: none;
+}
+
+.paper-assimilations {
+  scroll-margin-top: 24px;
+}

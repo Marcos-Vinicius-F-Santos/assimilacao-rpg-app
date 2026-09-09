@@ -5,6 +5,19 @@ function client() {
   return supabase;
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function isUuid(value) {
+  return UUID_PATTERN.test(String(value || ""));
+}
+
+function requireCampaignCharacterUuid(characterId) {
+  if (!isUuid(characterId)) {
+    throw new Error("Esta ação só está disponível para personagens de campanha.");
+  }
+  return characterId;
+}
+
 function mapSession(row) {
   return row ? {
     id: row.id,
@@ -76,6 +89,7 @@ export async function closeCampaignSession(sessionId) {
 }
 
 export async function getCharacterXp(characterId) {
+  requireCampaignCharacterUuid(characterId);
   const { data, error } = await client().from("character_xp_transactions").select("*").eq("character_id", characterId).order("created_at", { ascending: false });
   if (error) throw error;
   const transactions = (data || []).map(mapTransaction);
@@ -83,12 +97,14 @@ export async function getCharacterXp(characterId) {
 }
 
 export async function getInstinctProgressionStatus(characterId) {
+  requireCampaignCharacterUuid(characterId);
   const { data, error } = await client().from("character_session_mutations").select("id, session:campaign_sessions(number, status, closed_at)").eq("character_id", characterId);
   if (error) throw error;
   return (data || []).filter((entry) => entry.session?.status === "closed").sort((a, b) => String(b.session.closed_at).localeCompare(String(a.session.closed_at)))[0]?.session || null;
 }
 
 export async function purchaseAptitudeUpgrade(characterId, type, name) {
+  requireCampaignCharacterUuid(characterId);
   const { data, error } = await client().rpc("purchase_aptitude_upgrade", { target_character_id: characterId, aptitude_type: type, aptitude_name: name });
   if (error) throw error;
   return Array.isArray(data) ? data[0] : data;
@@ -101,6 +117,7 @@ export async function listCharacteristicRequests(campaignId) {
 }
 
 export async function requestCharacteristicPurchase(characterId, characteristicId, xpCost) {
+  requireCampaignCharacterUuid(characterId);
   const { data, error } = await client().rpc("request_characteristic_purchase", { target_character_id: characterId, target_characteristic_id: characteristicId, requested_xp_cost: Number(xpCost) });
   if (error) throw error;
   return mapRequest(Array.isArray(data) ? data[0] : data);
@@ -113,12 +130,14 @@ export async function reviewCharacteristicPurchase(requestId, approve) {
 }
 
 export async function changeCharacterDetermination(characterId, { loss = false, amount = 1 } = {}) {
+  requireCampaignCharacterUuid(characterId);
   const { data, error } = await client().rpc("change_character_determination", { target_character_id: characterId, loss, amount: Number(amount) });
   if (error) throw error;
   return Array.isArray(data) ? data[0] : data;
 }
 
 export async function completeCharacterAssimilation(characterId, additions) {
+  requireCampaignCharacterUuid(characterId);
   const { data, error } = await client().rpc("complete_character_assimilation", { target_character_id: characterId, additions: additions || {} });
   if (error) throw error;
   return Array.isArray(data) ? data[0] : data;
@@ -131,6 +150,7 @@ export async function createRemoteCampaignCharacter(campaignId, name, data) {
 }
 
 export async function updateRemoteCampaignCharacter(characterId, data) {
+  requireCampaignCharacterUuid(characterId);
   const { data: rows, error } = await client().rpc("update_campaign_character", { target_character_id: characterId, character_data: data || {} });
   if (error) throw error;
   return Array.isArray(rows) ? rows[0] : rows;

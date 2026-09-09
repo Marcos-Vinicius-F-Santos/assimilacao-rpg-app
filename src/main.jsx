@@ -98,7 +98,6 @@ import {
   updateCharacterRecord,
   canCreateCampaignCharacter,
   createCampaignCharacter,
-  createCampaignCharacterFromPersonal,
   createPersonalCharacter,
   deletePersonalCharacter,
   getPersonalCharacterById,
@@ -536,6 +535,24 @@ function AuthenticatedApp({ user, onSignOut }) {
     }
   };
 
+  const handleUsePersonalCharacter = async (personalCharacterId) => {
+    const personal = getPersonalCharacterById(campaignStore, personalCharacterId);
+    const campaign = getCampaignById(campaignStore, route.campaignId);
+    if (!personal || !campaign || !window.confirm(`Usar ${personal.name} nesta campanha? Isso criará uma cópia independente.`)) return;
+    try {
+      const data = personal.snapshot || personal.data || personal;
+      const remoteCharacter = await createRemoteCampaignCharacter(campaign.id, data.name, data);
+      const now = new Date().toISOString();
+      const character = { id: remoteCharacter.id, campaignId: campaign.id, ownerUserId: user.id, name: data.name, data: { ...data, creationCompleted: true, createdAt: now }, createdAt: remoteCharacter.created_at || now, updatedAt: remoteCharacter.updated_at || now };
+      const membership = campaignStore.memberships.find((entry) => entry.campaignId === campaign.id && entry.userId === user.id);
+      setCampaignStore((current) => saveCampaignStore({ ...current, characters: [...(current.characters || []), character], memberships: current.memberships.map((entry) => entry.id === membership?.id ? { ...entry, characterId: character.id } : entry) }));
+      persistStartingEquipment(character.id, data.initialEquipmentIds);
+      navigate(`/campaigns/${campaign.id}/characters/${character.id}`);
+    } catch (error) {
+      notify(error.message === "character-exists" ? "Você já possui um personagem nesta campanha." : error.message || "Não foi possível criar o personagem.");
+    }
+  };
+
   if (remoteLoading) return <AuthLoadingPage label="Carregando suas campanhas..." />;
   if (remoteError) return <RemoteSetupPage message={remoteError} onSignOut={onSignOut} />;
 
@@ -551,7 +568,7 @@ function AuthenticatedApp({ user, onSignOut }) {
   } else if (route.type === "homebrew") {
     page = <HomebrewPage store={campaignStore} setStore={setCampaignStore} user={user} onBack={() => navigate("/")} onOpenCharacters={() => navigate("/characters")} onOpenCampaign={(id) => navigate(`/campaigns/${id}`)} notify={notify} />;
   } else if (route.type === "campaign") {
-    page = <CampaignPage store={campaignStore} setStore={setCampaignStore} user={user} campaignId={route.campaignId} onBack={() => navigate("/")} onOpenItems={(id) => navigate(`/campaigns/${id}/items`)} onOpenCharacteristics={(id) => navigate(`/campaigns/${id}/characteristics`)} onOpenAssimilations={(id) => navigate(`/campaigns/${id}/assimilations`)} onOpenCharacter={(campaignId, characterId) => navigate(`/campaigns/${campaignId}/characters/${characterId}`)} onCreateCharacter={(id) => navigate(`/campaigns/${id}/characters/new`)} onUsePersonal={(id) => { const personal = getPersonalCharacterById(campaignStore, id); if (!personal || !window.confirm(`Usar ${personal.name} nesta campanha? Isso criará uma cópia independente.`)) return; const result = createCampaignCharacterFromPersonal(campaignStore, { campaignId: route.campaignId, ownerUserId: user.id, personalCharacterId: id }); if (result.ok) { setCampaignStore(result.store); navigate(`/campaigns/${route.campaignId}/characters/${result.character.id}`); } }} />;
+    page = <CampaignPage store={campaignStore} setStore={setCampaignStore} user={user} campaignId={route.campaignId} onBack={() => navigate("/")} onOpenItems={(id) => navigate(`/campaigns/${id}/items`)} onOpenCharacteristics={(id) => navigate(`/campaigns/${id}/characteristics`)} onOpenAssimilations={(id) => navigate(`/campaigns/${id}/assimilations`)} onOpenCharacter={(campaignId, characterId) => navigate(`/campaigns/${campaignId}/characters/${characterId}`)} onCreateCharacter={(id) => navigate(`/campaigns/${id}/characters/new`)} onUsePersonal={handleUsePersonalCharacter} />;
   } else if (route.type === "campaign-items") {
     page = <CampaignItemsPage store={campaignStore} setStore={setCampaignStore} user={user} campaignId={route.campaignId} onBack={() => navigate(`/campaigns/${route.campaignId}`)} notify={notify} />;
   } else if (route.type === "campaign-characteristics") {
@@ -1389,7 +1406,7 @@ function CampaignAccessMessage({ title, description, onBack }) {
 function Sidebar({ active, onNavigate, open, onClose, campaign, participantCount = 0, onCampaignClick, onSessions, showAssimilate = false }) {
   const items = [
     ["sheet", "Ficha do personagem", ClipboardList],
-    ["assimilation", "Assimilações", Sparkles],
+    ["assimilation-section", "Assimilações", Sparkles],
     ["inventory", "Inventário", Backpack],
     ...(showAssimilate ? [["assimilate", "Assimilar", Flame]] : []),
   ];
@@ -1577,10 +1594,6 @@ function OriginalSheet({ character, characterId, campaignId, setCharacter, canEd
   const selectedAttributeRef = useRef("");
   const clickTimerRef = useRef(null);
   const rollSequenceRef = useRef(0);
-  const changeAttribute = (name, nextValue) => {
-    setValues((current) => ({ ...current, [name]: nextValue }));
-    setCharacter((current) => ({ ...current, aptitudes: { ...(current.aptitudes || {}), [name]: nextValue } }));
-  };
   const healthTotal = Math.max(1, Math.min(11, values.Potência + values.Resolução));
   const purposes = normalizeCharacterPurposes(character);
   const canEditPurposes = character.creationCompleted !== false;
@@ -1767,9 +1780,9 @@ function OriginalSheet({ character, characterId, campaignId, setCharacter, canEd
       <div className="paper-body">
       <div className="paper-aptitudes">
           <div className="paper-aptitudes-top"><div className="paper-section-title"><h2>APTIDÕES</h2><span>{rollingEnabled ? "SELECIONE 1 OU 2" : "BLOCOS CLICÁVEIS"}</span></div><div className="paper-roll-controls"><label className={`paper-effort-toggle ${effortEnabled ? "active" : ""} ${!canUseEffort ? "disabled" : ""}`}><input type="checkbox" checked={effortEnabled} disabled={!canUseEffort} onChange={(event) => setEffortEnabled(event.target.checked)} /><span aria-hidden="true" /> EMPENHO</label><button type="button" className={`paper-roll-btn ${rollingEnabled ? "active" : ""}`} onClick={toggleRolling}>Rolagem</button></div></div>
-          <PaperAptitudeGroup title="Instintos" items={instincts} values={values} onChange={changeAttribute} tone="wine" rollingEnabled={rollingEnabled} selectedAttribute={selectedAttribute} onSelect={handleAttributeClick} onDoubleSelect={handleAttributeDoubleClick} />
-          <PaperAptitudeGroup title="Conhecimentos" items={knowledge} values={values} onChange={changeAttribute} tone="brown" rollingEnabled={rollingEnabled} selectedAttribute={selectedAttribute} onSelect={handleAttributeClick} onDoubleSelect={handleAttributeDoubleClick} />
-          <PaperAptitudeGroup title="Práticas" items={practices} values={values} onChange={changeAttribute} tone="brown" rollingEnabled={rollingEnabled} selectedAttribute={selectedAttribute} onSelect={handleAttributeClick} onDoubleSelect={handleAttributeDoubleClick} />
+          <PaperAptitudeGroup title="Instintos" items={instincts} values={values} tone="wine" rollingEnabled={rollingEnabled} selectedAttribute={selectedAttribute} onSelect={handleAttributeClick} onDoubleSelect={handleAttributeDoubleClick} />
+          <PaperAptitudeGroup title="Conhecimentos" items={knowledge} values={values} tone="brown" rollingEnabled={rollingEnabled} selectedAttribute={selectedAttribute} onSelect={handleAttributeClick} onDoubleSelect={handleAttributeDoubleClick} />
+          <PaperAptitudeGroup title="Práticas" items={practices} values={values} tone="brown" rollingEnabled={rollingEnabled} selectedAttribute={selectedAttribute} onSelect={handleAttributeClick} onDoubleSelect={handleAttributeDoubleClick} />
         </div>
         <HealthTracker health={healthTotal} levels={defaultHealthLevels} damagedPips={damagedPips} onToggleDamage={(pipKey) => setDamagedPips((current) => ({ ...current, [pipKey]: !current[pipKey] }))} />
       </div>
@@ -1778,7 +1791,6 @@ function OriginalSheet({ character, characterId, campaignId, setCharacter, canEd
         <PaperAssimilations character={character} setCharacter={setCharacter} canEdit={canEdit} onOpenDetail={setDetailPopup} notify={notify} />
       </div>
       <TugOfWar character={character} setCharacter={setCharacter} onChangeDetermination={onChangeDetermination} />
-      <ProgressionPanel character={character} characterId={characterId} campaignId={campaignId} values={values} setCharacter={setCharacter} activeSession={activeSession} isOwner={isOwner} user={user} notify={notify} />
       {(character.isSusceptible || character.assimilationPending) && <CharacterAssimilationPanel character={character} characterId={characterId} setCharacter={setCharacter} activeSession={activeSession} isOwner={isOwner} notify={notify} />}
       <section id="inventory" className="embedded-section paper-inventory-section">
         <Inventory key={`${campaignId || "campaign"}:${characterId || "character"}`} notify={notify} campaignId={campaignId} characterId={characterId} storageKey={characterId ? `${INVENTORY_STORAGE_KEY}:${characterId}` : INVENTORY_STORAGE_KEY} store={store} availableItems={availableItems} onCreateCampaignItem={onCreateCampaignItem} />
@@ -2199,7 +2211,7 @@ function PurposeField({ label, value, editable, onChange }) {
     </div>
   );
 }
-function PaperAptitudeGroup({ title, items, values, onChange, tone, rollingEnabled, selectedAttribute, onSelect, onDoubleSelect }) {
+function PaperAptitudeGroup({ title, items, values, tone, rollingEnabled, selectedAttribute, onSelect, onDoubleSelect }) {
   return (
     <section className={`paper-aptitude-group ${tone}`}>
       <div className="paper-section-title"><h2>{title}</h2><span>{title === "Instintos" ? "d6" : "d10"}</span></div>
@@ -2221,22 +2233,9 @@ function PaperAptitudeGroup({ title, items, values, onChange, tone, rollingEnabl
             aria-label={rollingEnabled ? `${name}, selecionar para rolagem` : undefined}
           >
             <span>{name}</span>
-            <div className="square-pips">
+            <div className="square-pips" aria-label={`${name}, nível ${values[name] || 0}`} onClick={(event) => event.stopPropagation()}>
               {[1, 2, 3, 4, 5].map((n) => (
-                <button
-                  type="button"
-                  className={n <= values[name] ? "filled" : ""}
-                  key={n}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    if (rollingEnabled) {
-                      onSelect(name);
-                    } else {
-                      onChange(name, n);
-                    }
-                  }}
-                  aria-label={`${name}, valor ${n}`}
-                />
+                <i className={n <= values[name] ? "filled" : ""} key={n} aria-hidden="true" />
               ))}
             </div>
           </div>
@@ -2506,7 +2505,7 @@ function PaperAssimilations({ character, setCharacter, canEdit, onOpenDetail, no
     meta: reference?.assimilationId || "Registro legado",
     abilities: reference?.abilities,
   });
-  return <section id="assimilation" className="paper-assimilations">
+  return <section id="assimilation-section" className="paper-assimilations">
     <div className="paper-section-title"><h2>ASSIMILAÇÕES</h2></div>
     <div className="paper-mutation-list">
       {refs.length ? refs.map((reference, index) => {
