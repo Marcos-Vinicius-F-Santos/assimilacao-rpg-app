@@ -860,7 +860,7 @@ function CreationStepTitle({ number, label, children }) {
 function CharacterCreationPage({ store, setStore, user, campaign = null, mode = "personal", onCancel, onComplete }) {
   const storageKey = `assimilation-character-creation:${user.id}:${campaign?.id || "personal"}`;
   const [draft, setDraft] = useState(() => {
-    try { const saved = window.localStorage.getItem(storageKey); return saved ? JSON.parse(saved) : createCharacterCreationDraft({ campaignId: campaign?.id || null, startingDeterminationLevel: campaign?.characterCreationSettings?.startingDeterminationLevel ?? 10 }); } catch { return createCharacterCreationDraft({ campaignId: campaign?.id || null, startingDeterminationLevel: campaign?.characterCreationSettings?.startingDeterminationLevel ?? 10 }); }
+    try { const saved = window.localStorage.getItem(storageKey); return saved ? JSON.parse(saved) : createCharacterCreationDraft({ campaignId: campaign?.id || null }); } catch { return createCharacterCreationDraft({ campaignId: campaign?.id || null }); }
   });
   const [stepIndex, setStepIndex] = useState(0);
   const [errors, setErrors] = useState([]);
