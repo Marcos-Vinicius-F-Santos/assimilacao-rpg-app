@@ -46,6 +46,8 @@ import {
   assimilationFamilyLabels,
   assimilationCatalogById,
   officialAssimilations,
+  formatAssimilationAcquisitionCost,
+  formatAssimilationLevelRequirement,
   getAssimilationRefId,
   getCharacterAssimilationRefs,
   getAssimilationSearchText,
@@ -1003,7 +1005,7 @@ function CampaignCharacteristicsPage({ store, user, campaignId, onBack }) {
 
 function AssimilationAbilityList({ abilities }) {
   if (!abilities?.length) return <p className="reference-empty-copy">As habilidades internas serão exibidas após a importação fiel do PDF.</p>;
-  return <div className="assimilation-ability-list">{abilities.map((ability) => <article className="assimilation-ability" key={ability.id}><div><h3>{ability.name}</h3>{ability.activationCost && <span className="reference-cost">{ability.activationCost.amount ?? ""} {ability.activationCost.resource || ""}</span>}</div><p>{ability.description}</p></article>)}</div>;
+  return <div className="assimilation-ability-list">{abilities.map((ability) => <article className="assimilation-ability" key={ability.id}><div><h3>{ability.name}</h3><div className="assimilation-ability-meta"><span className="reference-cost">Custo: {formatAssimilationAcquisitionCost(ability.acquisitionCost)}</span>{ability.assimilationLevelRequirement && <span className="reference-cost">Requisito: {formatAssimilationLevelRequirement(ability.assimilationLevelRequirement)}</span>}{ability.activationCost && <span className="reference-cost">Ativação: {ability.activationCost.amount ?? ""} {ability.activationCost.resource || ""}</span>}{ability.costText && !ability.assimilationLevelRequirement && !/^Assimilação\s+\d+/i.test(ability.costText) && <span className="reference-cost">{ability.costText}</span>}</div></div><p>{ability.description}</p></article>)}</div>;
 }
 
 function CampaignAssimilationsPage({ store, user, campaignId, onBack }) {
@@ -1970,7 +1972,7 @@ function AssimilationCatalogModal({ state, setState, acquiredIds, onAdd }) {
         </div>
         <footer className="inventory-catalog-footer assimilation-catalog-modal__footer">
           <div className="assimilation-catalog-selection">
-            {selectedItem ? <><strong>{selectedItem.name}</strong><span>{assimilationFamilyLabels[selectedItem.family]} · Nível {selectedItem.level} · Grau {selectedItem.rank}</span><p>{selectedItem.description}</p><div className="assimilation-ability-preview">{selectedItem.abilities.map((ability) => <span key={ability.id}><b>{ability.name}</b>{ability.costText ? ` · ${ability.costText}` : ""}</span>)}</div></> : <span>Selecione um card para consultar os detalhes.</span>}
+            {selectedItem ? <><strong>{selectedItem.name}</strong><span>{assimilationFamilyLabels[selectedItem.family]} · Nível {selectedItem.level} · Grau {selectedItem.rank}</span><p>{selectedItem.description}</p><div className="assimilation-ability-preview">{selectedItem.abilities.map((ability) => <span className="assimilation-ability-preview__item" key={ability.id}><b>{ability.name}</b><small>Custo: {formatAssimilationAcquisitionCost(ability.acquisitionCost)}</small>{ability.assimilationLevelRequirement && <small>Requisito: {formatAssimilationLevelRequirement(ability.assimilationLevelRequirement)}</small>}{ability.costText && !ability.assimilationLevelRequirement && !/^Assimilação\s+\d+/i.test(ability.costText) && <small>{ability.costText}</small>}</span>)}</div></> : <span>Selecione um card para consultar os detalhes.</span>}
           </div>
           <div className="inventory-modal-actions assimilation-catalog-actions"><button type="button" className="inventory-cancel-btn" onClick={() => setState(null)}>Cancelar</button><button type="button" className="inventory-save-btn" disabled={!selectedItem || selectedAcquired} onClick={() => onAdd(selectedItem.id)}>{selectedAcquired ? "JÁ ADICIONADA" : "ADICIONAR À FICHA"}</button></div>
         </footer>
@@ -2086,7 +2088,7 @@ function CharacterDetailModal({ detail, onClose }) {
         <button type="button" className="detail-modal-close" onClick={onClose} aria-label="Fechar descrição"><X size={18} /></button>
       </div>
       <p className="detail-modal-description">{detail.description}</p>
-      {detail.abilities?.length > 0 && <div className="detail-modal-abilities"><h3>Habilidades</h3>{detail.abilities.map((ability) => <div className="detail-modal-ability" key={ability.id || ability.name}><strong>{ability.name}</strong>{ability.costText && <small>{ability.costText}</small>}<p>{ability.description}</p></div>)}</div>}
+      {detail.abilities?.length > 0 && <div className="detail-modal-abilities"><h3>Habilidades</h3>{detail.abilities.map((ability) => <div className="detail-modal-ability" key={ability.id || ability.name}><strong>{ability.name}</strong><small>Custo: {formatAssimilationAcquisitionCost(ability.acquisitionCost)}</small>{ability.assimilationLevelRequirement && <small>Requisito: {formatAssimilationLevelRequirement(ability.assimilationLevelRequirement)}</small>}{ability.costText && !ability.assimilationLevelRequirement && !/^Assimilação\s+\d+/i.test(ability.costText) && <small>{ability.costText}</small>}<p>{ability.description}</p></div>)}</div>}
       <div className="detail-modal-meta"><span>{detail.label}</span><strong>{detail.meta}</strong></div>
     </section>
   </div>;

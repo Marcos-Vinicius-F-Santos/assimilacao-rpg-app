@@ -2099,6 +2099,7 @@ select:focus-visible {
 .assimilation-ability > div { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .assimilation-ability h3 { margin: 0; color: #713b35; font: 700 12px 'Space Grotesk'; }
 .assimilation-ability p { margin: 4px 0 0; font: 500 11px/1.45 Georgia, serif; }
+.assimilation-ability-meta { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 3px 8px; }
 .reference-cost { color: #315e60; font: 700 9px 'Space Grotesk'; text-transform: uppercase; }
 .reference-empty-copy { margin: 0; color: #866e59; font-size: 12px; }
 
@@ -2461,7 +2462,10 @@ select:focus-visible {
 .assimilation-catalog-selection>strong{color:#5d4033;font:700 12px 'Space Grotesk';text-transform:uppercase}
 .assimilation-catalog-selection>span{color:#765c49;font-size:9px}
 .assimilation-catalog-selection>p{max-width:570px;margin:0;color:#624b3b;font:500 10px/1.4 Georgia;display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2}
-.assimilation-ability-preview{display:flex;flex-wrap:wrap;gap:4px 9px;max-height:28px;overflow:hidden;color:#8f7158;font-size:8px}
+.assimilation-ability-preview{display:grid;gap:6px;max-height:180px;overflow-y:auto;padding-right:3px;color:#8f7158;font-size:8px}
+.assimilation-ability-preview__item{display:grid;gap:2px;padding-top:5px;border-top:1px dashed #bea17d}
+.assimilation-ability-preview__item:first-child{padding-top:0;border-top:0}
+.assimilation-ability-preview__item small{color:#315e60;font:700 8px 'Space Grotesk';text-transform:uppercase}
 .assimilation-ability-preview b{color:#713b35}
 .detail-modal-abilities{display:grid;gap:8px;margin:0 0 18px;padding-top:15px;border-top:1px dashed #bea17d}
 .detail-modal-abilities h3{margin:0;color:#713b35;font:700 10px 'Space Grotesk';letter-spacing:.08em;text-transform:uppercase}
@@ -2469,6 +2473,7 @@ select:focus-visible {
 .detail-modal-ability:last-child{padding-bottom:0;border-bottom:0}
 .detail-modal-ability>strong{color:#5d4033;font:700 11px 'Space Grotesk'}
 .detail-modal-ability>small{color:#92765d;font:700 8px 'Space Grotesk';text-transform:uppercase}
+.detail-modal-ability>small{grid-column:2;text-align:right}
 .detail-modal-ability>p{grid-column:1/-1;margin:0;color:#624b3b;font:500 11px/1.4 Georgia}
 
 @media (max-width:760px){
