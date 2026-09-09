@@ -3498,6 +3498,87 @@ html,
   background: var(--scrollbar-track);
 }
 
+/* Campaign sessions and progression. */
+.campaign-session-current,
+.campaign-session-panel,
+.campaign-session-history {
+  margin-bottom: 28px;
+  padding: 20px;
+  border: 1px solid #b99c76;
+  background: #ead9bd80;
+}
+.campaign-session-current .campaign-section-heading,
+.campaign-session-panel .campaign-section-heading,
+.campaign-session-history .campaign-section-heading { margin-bottom: 14px; }
+.campaign-session-status,
+.campaign-session-open-form { display: flex; align-items: end; justify-content: space-between; gap: 14px; }
+.campaign-session-status { color: #866e59; font-size: 13px; }
+.campaign-session-live { color: #315e60; font: 700 10px 'Space Grotesk'; letter-spacing: .08em; }
+.campaign-session-open-form label,
+.campaign-session-xp label { display: grid; gap: 6px; color: #866e59; font: 700 10px 'Space Grotesk'; letter-spacing: .06em; text-transform: uppercase; }
+.campaign-session-open-form input,
+.campaign-session-xp input { min-height: 34px; border: 1px solid #b99c76; padding: 0 10px; background: #f8efdb; color: #4c392c; font: 14px 'DM Sans'; }
+.campaign-session-help { margin: 0 0 14px; color: #866e59; font-size: 13px; }
+.campaign-session-character-list,
+.campaign-session-history-list { display: grid; gap: 8px; }
+.campaign-session-character-card { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 14px; border: 1px solid #c7ab84; background: #f8efdb; }
+.campaign-session-character-card h3 { margin: 3px 0; color: #713b35; font: 700 17px 'Space Grotesk'; }
+.campaign-session-character-card small { color: #866e59; }
+.campaign-session-flag { display: inline-block; margin: 8px 6px 0 0; padding: 4px 6px; background: #ead0c4; color: #713b35; font: 700 9px 'Space Grotesk'; letter-spacing: .06em; }
+.campaign-session-xp { display: flex; align-items: end; gap: 7px; flex: 0 0 auto; }
+.campaign-session-xp input { width: 76px; }
+.campaign-session-xp .campaign-primary-btn,
+.campaign-session-xp .campaign-secondary-btn,
+.campaign-session-status .campaign-primary-btn { min-height: 34px; padding: 8px 11px; }
+.campaign-session-history-list article { display: grid; gap: 4px; padding: 13px; border: 1px solid #c7ab84; background: #f8efdb; }
+.campaign-session-history-list strong { color: #713b35; font: 700 15px 'Space Grotesk'; }
+.campaign-session-history-list span,
+.campaign-session-history-list small { color: #866e59; font-size: 12px; }
+.paper-progression { margin-top: 30px; padding: 18px 0 4px; border-top: 1px solid #c4aa86; }
+.paper-progression > .paper-section-title { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
+.paper-progression > .paper-section-title h2 { margin: 0; color: #713b35; font: 700 22px 'Space Grotesk'; }
+.paper-progression > .paper-section-title span,
+.paper-progression > .paper-section-title strong,
+.progression-aptitude-group h3,
+.progression-characteristics h3,
+.progression-history h3 { color: #866e59; font: 700 10px 'Space Grotesk'; letter-spacing: .08em; text-transform: uppercase; }
+.paper-progression > .paper-section-title strong { color: #315e60; font-size: 14px; }
+.progression-lock,
+.progression-error,
+.progression-characteristics,
+.progression-history { margin: 14px 0 0; padding: 12px; border: 1px solid #c7ab84; background: #ead9bd80; color: #866e59; font-size: 12px; }
+.progression-error { border-color: #713b35; color: #713b35; }
+.progression-aptitude-groups { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+.progression-aptitude-group { padding: 12px; border: 1px solid #c7ab84; background: #f8efdb; }
+.progression-aptitude-group h3 { margin: 0 0 8px; color: #713b35; }
+.progression-aptitude-row,
+.progression-characteristic-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-top: 1px dashed #c7ab84; }
+.progression-aptitude-row:first-of-type { border-top: 0; }
+.progression-aptitude-row span,
+.progression-characteristic-row span { color: #4c392c; font-weight: 700; font-size: 12px; }
+.progression-aptitude-row small,
+.progression-characteristic-row small { display: block; margin-top: 3px; color: #866e59; font-size: 10px; font-weight: 400; }
+.progression-aptitude-row button,
+.progression-characteristic-row button { border: 1px solid #9b725e; padding: 6px 8px; background: transparent; color: #713b35; font: 700 9px 'Space Grotesk'; text-transform: uppercase; cursor: pointer; }
+.progression-aptitude-row button:disabled,
+.progression-characteristic-row button:disabled { cursor: default; opacity: .45; }
+.progression-characteristics .paper-section-title { margin-bottom: 8px; }
+.progression-characteristics .paper-section-title h3,
+.progression-history .paper-section-title h3 { margin: 0; color: #713b35; }
+.progression-characteristic-list { display: grid; max-height: 420px; overflow: auto; }
+.progression-request-review { display: flex; gap: 4px; }
+.progression-request-review button { border-color: #315e60; color: #315e60; }
+.progression-history-row { display: flex; gap: 10px; padding: 7px 0; border-top: 1px dashed #c7ab84; color: #866e59; font-size: 12px; }
+.progression-history-row strong { min-width: 30px; color: #315e60; }
+.progression-history p { margin: 0; color: #866e59; font-size: 12px; }
+@media (max-width: 760px) {
+  .campaign-session-status,
+  .campaign-session-open-form,
+  .campaign-session-character-card { align-items: stretch; flex-direction: column; }
+  .campaign-session-xp { flex-wrap: wrap; }
+  .progression-aptitude-groups { grid-template-columns: 1fr; }
+}
+
 /* Campaign foundation: the same paper palette as the character sheet. */
 .campaign-page {
   min-height: 100vh;

@@ -92,6 +92,7 @@ import {
   rejectHomebrewRequest,
   resolveInventoryItemDefinition,
   requestHomebrewForCampaign,
+  saveCampaignStore,
   updateCampaignItem,
   updateHomebrew,
   updateCharacterRecord,
@@ -107,6 +108,8 @@ import {
 } from "./campaignService";
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import { createCampaign as createRemoteCampaign, getCampaignState, joinCampaignByCode as joinRemoteCampaignByCode } from "./services/campaignService";
+import { changeCharacterDetermination, closeCampaignSession, getCharacterXp, getInstinctProgressionStatus, getOpenCampaignSession, getSessionAwards, getSessionCharacters, listCampaignSessions, listCharacteristicRequests, openCampaignSession, purchaseAptitudeUpgrade, requestCharacteristicPurchase, reviewCharacteristicPurchase, upsertSessionXpAward } from "./services/sessionService";
+import { completeCharacterAssimilation, createRemoteCampaignCharacter, updateRemoteCampaignCharacter } from "./services/sessionService";
 import {
   creationInstinctNames,
   creationKnowledgeNames,
@@ -137,6 +140,7 @@ import {
   validateAssimilationCards,
   validateInitialAssimilation,
   zeroAssimilationResult,
+  groupAssimilationAcquisitions,
 } from "./initialAssimilation";
 import owlSymbolAsset from "./assets/owl-svgrepo-com.svg";
 import deerSymbolAsset from "./assets/deer-svgrepo-com.svg";
@@ -261,12 +265,14 @@ function updateTugPoints(character, side, amount) {
   const current = sanitizeTugOfWarState(character);
   const key = side === "assimilation" ? "assimilation" : "determination";
   const resource = current[key];
+  const points = clampInteger(resource.points + amount, 0, resource.level, resource.points);
   return {
     ...current,
     [key]: {
-      ...resource,
-      points: clampInteger(resource.points + amount, 0, resource.level, resource.points),
+        ...resource,
+      points,
     },
+    ...(key === "determination" && points === 0 ? { isSusceptible: true } : {}),
   };
 }
 
@@ -450,6 +456,7 @@ function parseAppRoute(pathname = window.location.pathname) {
   if (parts.length === 3 && parts[2] === "items") return { type: "campaign-items", campaignId: decodeURIComponent(parts[1]) };
   if (parts.length === 3 && parts[2] === "characteristics") return { type: "campaign-characteristics", campaignId: decodeURIComponent(parts[1]) };
   if (parts.length === 3 && parts[2] === "assimilations") return { type: "campaign-assimilations", campaignId: decodeURIComponent(parts[1]) };
+  if (parts.length === 3 && parts[2] === "sessions") return { type: "campaign-sessions", campaignId: decodeURIComponent(parts[1]) };
   if (parts.length === 4 && parts[2] === "characters" && parts[3] === "new") return { type: "campaign-character-create", campaignId: decodeURIComponent(parts[1]) };
   if (parts.length === 2) return { type: "campaign", campaignId: decodeURIComponent(parts[1]) };
   if (parts.length === 4 && parts[2] === "characters") return { type: "character", campaignId: decodeURIComponent(parts[1]), characterId: decodeURIComponent(parts[3]) };
@@ -457,7 +464,7 @@ function parseAppRoute(pathname = window.location.pathname) {
 }
 
 function mergeRemoteCampaignState(store, remoteState) {
-  return { ...store, campaigns: remoteState.campaigns, memberships: remoteState.memberships, users: remoteState.users };
+  return { ...store, campaigns: remoteState.campaigns, memberships: remoteState.memberships, users: remoteState.users, characters: remoteState.characters || store.characters };
 }
 
 function AuthenticatedApp({ user, onSignOut }) {
@@ -551,13 +558,15 @@ function AuthenticatedApp({ user, onSignOut }) {
     page = <CampaignCharacteristicsPage store={campaignStore} user={user} campaignId={route.campaignId} onBack={() => navigate(`/campaigns/${route.campaignId}`)} />;
   } else if (route.type === "campaign-assimilations") {
     page = <CampaignAssimilationsPage store={campaignStore} user={user} campaignId={route.campaignId} onBack={() => navigate(`/campaigns/${route.campaignId}`)} />;
+  } else if (route.type === "campaign-sessions") {
+    page = <CampaignSessionsPage store={campaignStore} user={user} campaignId={route.campaignId} onBack={() => navigate(`/campaigns/${route.campaignId}`)} onOpenCharacter={(id) => navigate(`/campaigns/${route.campaignId}/characters/${id}`)} notify={notify} />;
   } else if (route.type === "campaign-character-create") {
     const campaign = getCampaignById(campaignStore, route.campaignId);
     page = campaign && canCreateCampaignCharacter(campaignStore, user.id, route.campaignId)
       ? <CharacterCreationPage store={campaignStore} setStore={setCampaignStore} user={user} campaign={campaign} mode="campaign" onCancel={() => navigate(`/campaigns/${route.campaignId}`)} onComplete={(id) => navigate(`/campaigns/${route.campaignId}/characters/${id}`)} />
       : <CampaignAccessMessage title="Criação indisponível" description="Você já possui uma ficha nesta campanha ou não participa dela." onBack={() => navigate(`/campaigns/${route.campaignId}`)} />;
   } else if (route.type === "character") {
-    page = <CharacterPage store={campaignStore} setStore={setCampaignStore} user={user} campaignId={route.campaignId} characterId={route.characterId} onBack={() => navigate(`/campaigns/${route.campaignId}`)} onNavigate={navigate} notify={notify} mobileMenu={mobileMenu} setMobileMenu={setMobileMenu} />;
+    page = <CharacterPage store={campaignStore} setStore={setCampaignStore} user={user} campaignId={route.campaignId} characterId={route.characterId} onBack={() => navigate(`/campaigns/${route.campaignId}`)} onOpenSessions={() => navigate(`/campaigns/${route.campaignId}/sessions`)} onNavigate={navigate} notify={notify} mobileMenu={mobileMenu} setMobileMenu={setMobileMenu} />;
   } else {
     page = <CampaignAccessMessage title="Página não encontrada" description="A rota solicitada não existe nesta campanha." onBack={() => navigate("/")} />;
   }
@@ -958,7 +967,7 @@ function CharacterCreationPage({ store, setStore, user, campaign = null, mode = 
   };
   const next = () => { const nextErrors = getStepErrors(); setErrors(nextErrors); if (nextErrors.length) return; setStepIndex((index) => Math.min(creationSteps.length - 1, index + 1)); };
   const back = () => { setErrors([]); setStepIndex((index) => Math.max(0, index - 1)); };
-  const finish = () => {
+  const finish = async () => {
     const finalErrors = validateCreationDraft(draft, characteristicCatalog);
     const invalid = selectedCharacteristics.filter((id) => { const item = characteristicCatalog.find((entry) => entry.id === id); return item && !evaluateCharacteristicRequirement(item.requirements, aptitudes, tug.assimilationLevel); });
     const allErrors = [...finalErrors, ...(invalid.length ? ["Corrija os requisitos das Características: " + invalid.join(", ")] : []), ...(xpRemaining < 0 ? ["O XP restante não pode ficar negativo."] : [])];
@@ -966,7 +975,20 @@ function CharacterCreationPage({ store, setStore, user, campaign = null, mode = 
     if (allErrors.length) return;
     const draftForSave = { ...draft, xp: { ...draft.xp, spentOnCharacteristics: characteristicsCost, spentOnAptitudes: aptitudeXpCost } };
     const data = { ...buildCharacterDataFromDraft(draftForSave), ...(mode === "campaign" && selectedCharacteristics.includes("estagio-avancado") ? { pendingMasterApproval: true, requiresMasterApproval: true } : {}) };
-    const result = mode === "campaign" ? createCampaignCharacter(store, { campaignId: campaign.id, ownerUserId: user.id, data }) : createPersonalCharacter(store, { ownerUserId: user.id, data });
+    let result;
+    if (mode === "campaign") {
+      try {
+        const remoteCharacter = await createRemoteCampaignCharacter(campaign.id, data.name, data);
+        const now = new Date().toISOString();
+        const character = { id: remoteCharacter.id, campaignId: campaign.id, ownerUserId: user.id, name: data.name, data: { ...data, creationCompleted: true, createdAt: now }, createdAt: remoteCharacter.created_at || now, updatedAt: remoteCharacter.updated_at || now };
+        const membership = store.memberships.find((entry) => entry.campaignId === campaign.id && entry.userId === user.id);
+        result = { ok: true, character, store: saveCampaignStore({ ...store, characters: [...(store.characters || []), character], memberships: store.memberships.map((entry) => entry.id === membership?.id ? { ...entry, characterId: character.id } : entry) }) };
+      } catch (error) {
+        result = { ok: false, reason: error.message || "Não foi possível salvar o personagem no banco." };
+      }
+    } else {
+      result = createPersonalCharacter(store, { ownerUserId: user.id, data });
+    }
     if (!result.ok) { setErrors([result.reason === "character-exists" ? "Você já possui um personagem nesta campanha." : "Não foi possível criar o personagem."]); return; }
     persistStartingEquipment(result.character?.id || result.personalCharacter?.id, data.initialEquipmentIds);
     try { window.localStorage.removeItem(storageKey); } catch { /* rascunho opcional */ }
@@ -1146,6 +1168,7 @@ function CampaignItemsPage({ store, setStore, user, campaignId, onBack, notify }
 function CampaignReferenceNav({ campaignId, active }) {
   const links = [
     ["participants", "Participantes", `/campaigns/${campaignId}`],
+    ["sessions", "Sessões", `/campaigns/${campaignId}/sessions`],
     ["items", "Itens", `/campaigns/${campaignId}/items`],
     ["characteristics", "Características", `/campaigns/${campaignId}/characteristics`],
     ["assimilations", "Assimilações", `/campaigns/${campaignId}/assimilations`],
@@ -1158,6 +1181,69 @@ function CampaignReferenceNav({ campaignId, active }) {
   return <nav className="campaign-reference-nav" aria-label="Seções da campanha">
     {links.map(([key, label, path]) => <button type="button" key={key} className={active === key ? "is-active" : ""} aria-current={active === key ? "page" : undefined} onClick={() => go(path)}>{label}</button>)}
   </nav>;
+}
+
+function CampaignSessionsPage({ store, user, campaignId, onBack, onOpenCharacter, notify }) {
+  const campaign = getCampaignById(store, campaignId);
+  const role = getCampaignRole(store, user.id, campaignId);
+  const [sessions, setSessions] = useState([]);
+  const [characters, setCharacters] = useState([]);
+  const [awards, setAwards] = useState([]);
+  const [sessionName, setSessionName] = useState("");
+  const [awardDrafts, setAwardDrafts] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const activeSession = sessions.find((session) => session.status === "open") || null;
+
+  const refresh = async () => {
+    setError("");
+    const nextSessions = await listCampaignSessions(campaignId);
+    setSessions(nextSessions);
+    const nextActive = nextSessions.find((session) => session.status === "open");
+    if (!nextActive) { setCharacters([]); setAwards([]); setAwardDrafts({}); return; }
+    const [nextCharacters, nextAwards] = await Promise.all([getSessionCharacters(campaignId), getSessionAwards(nextActive.id)]);
+    setCharacters(nextCharacters);
+    setAwards(nextAwards);
+    setAwardDrafts(Object.fromEntries(nextAwards.map((award) => [award.characterId, award.amount])));
+  };
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    refresh().catch((nextError) => { if (active) setError(nextError.message || "Não foi possível carregar as sessões."); }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [campaignId]);
+
+  if (!campaign || !role) return <CampaignAccessMessage title="Acesso às sessões negado" description="Apenas participantes da campanha podem consultar suas sessões." onBack={onBack} />;
+
+  const createSession = async (event) => {
+    event.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    try { await openCampaignSession(campaignId, sessionName); setSessionName(""); await refresh(); notify("Sessão aberta."); } catch (nextError) { setError(nextError.message || "Não foi possível abrir a sessão."); } finally { setBusy(false); }
+  };
+  const saveAward = async (characterId) => {
+    if (!activeSession || busy) return;
+    setBusy(true);
+    try { await upsertSessionXpAward(activeSession.id, characterId, Number(awardDrafts[characterId] || 0)); await refresh(); notify("XP pendente atualizado."); } catch (nextError) { setError(nextError.message || "Não foi possível registrar o XP."); } finally { setBusy(false); }
+  };
+  const finishSession = async () => {
+    if (!activeSession || busy || !window.confirm("Esta sessão será encerrada permanentemente e não poderá ser reaberta.")) return;
+    setBusy(true);
+    try { await closeCampaignSession(activeSession.id); await refresh(); notify("Sessão encerrada e XP consolidado."); } catch (nextError) { setError(nextError.message || "Não foi possível fechar a sessão."); } finally { setBusy(false); }
+  };
+  const displayCharacters = characters.length ? characters : (store.characters || []).filter((character) => character.campaignId === campaignId).map((character) => ({ id: character.id, owner_user_id: character.ownerUserId, name: character.name, data: character.data || character, is_susceptible: character.data?.isSusceptible, assimilation_pending: character.data?.assimilationPending }));
+  const awardFor = (characterId) => awards.find((award) => award.characterId === characterId)?.amount || 0;
+  const ownerName = (character) => getUserById(store, character.owner_user_id || character.ownerUserId).name;
+  return <CampaignSectionLayout campaign={campaign} activeSection="sessions" eyebrow="CAMPANHA" title="Sessões" description="Acompanhe sessões abertas, XP pendente e o histórico imutável da campanha." onBack={onBack} count={sessions.length} countLabel="sessões">
+    {error && <div className="creation-errors" role="alert"><span>{error}</span></div>}
+    {loading ? <div className="campaign-empty-state"><strong>Carregando sessões...</strong></div> : <>
+      <section className="campaign-session-current"><div className="campaign-section-heading"><span className="eyebrow">SESSÃO ATUAL</span><h2>{activeSession ? `Sessão ${activeSession.number}${activeSession.name ? ` · ${activeSession.name}` : ""}` : "Nenhuma sessão em andamento."}</h2></div>{activeSession ? <div className="campaign-session-status"><span className="campaign-session-live">● ABERTA</span><span>Aberta em {new Date(activeSession.openedAt).toLocaleString("pt-BR")}</span>{role === "master" && <button type="button" className="campaign-primary-btn" disabled={busy} onClick={finishSession}>Fechar sessão</button>}</div> : role === "master" && <form className="campaign-session-open-form" onSubmit={createSession}><label>Nome da sessão (opcional)<input value={sessionName} onChange={(event) => setSessionName(event.target.value)} placeholder={`Sessão ${sessions.length + 1}`} /></label><button type="submit" className="campaign-primary-btn" disabled={busy}>Abrir nova sessão</button></form>}</section>
+      {activeSession && <section className="campaign-session-panel"><div className="campaign-section-heading"><span className="eyebrow">{role === "master" ? "PAINEL DO MESTRE" : "SESSÃO ATIVA"}</span><h2>{role === "master" ? "Personagens da campanha" : "A sessão está aberta"}</h2></div>{role === "player" && <p className="campaign-session-help">Você não precisa entrar manualmente. Use sua ficha normalmente; a sessão ativa é detectada automaticamente.</p>}{role === "master" && <><p className="campaign-session-help">O livro recomenda ao menos 1 XP para participantes. Distribua manualmente apenas para quem participou.</p><div className="campaign-session-character-list">{displayCharacters.length ? displayCharacters.map((character) => { const data = character.data || {}; const determination = data.determination || {}; const assimilation = data.assimilation || {}; return <article className="campaign-session-character-card" key={character.id}><div><span className="eyebrow">{ownerName(character)}</span><h3>{character.name}</h3><small>Determinação {determination.level ?? "—"} · Assimilação {assimilation.level ?? "—"}</small>{(character.is_susceptible || data.isSusceptible) && <span className="campaign-session-flag">SUSCETÍVEL</span>}{(character.assimilation_pending || data.assimilationPending) && <span className="campaign-session-flag">ASSIMILAÇÃO PENDENTE</span>}</div><div className="campaign-session-xp"><label>XP pendente<input type="number" min="0" value={awardDrafts[character.id] ?? awardFor(character.id)} onChange={(event) => setAwardDrafts((current) => ({ ...current, [character.id]: event.target.value }))} /></label><button type="button" className="campaign-secondary-btn" disabled={busy} onClick={() => saveAward(character.id)}>Salvar XP</button><button type="button" className="campaign-primary-btn" onClick={() => onOpenCharacter(character.id)}>Abrir ficha</button></div></article>; }) : <p className="campaign-request-empty">Nenhum personagem criado nesta campanha.</p>}</div></>}</section>}
+      <section className="campaign-session-history"><div className="campaign-section-heading"><span className="eyebrow">HISTÓRICO</span><h2>Sessões encerradas</h2></div>{sessions.filter((session) => session.status === "closed").length ? <div className="campaign-session-history-list">{sessions.filter((session) => session.status === "closed").map((session) => <article key={session.id}><strong>Sessão {session.number}{session.name ? ` · ${session.name}` : ""}</strong><span>Fechada em {new Date(session.closedAt).toLocaleString("pt-BR")}</span><small>Esta sessão não pode ser reaberta.</small></article>)}</div> : <p className="campaign-request-empty">Nenhuma sessão encerrada ainda.</p>}</section>
+    </>}
+  </CampaignSectionLayout>;
 }
 
 function CampaignSectionLayout({ campaign, activeSection, eyebrow, title, description, count, countLabel = "entradas", headerAside, onBack, pageClassName = "", contentClassName = "", children }) {
@@ -1255,13 +1341,32 @@ function CampaignPage({ store, setStore, user, campaignId, onBack, onOpenItems, 
   </CampaignSectionLayout>;
 }
 
-function CharacterPage({ store, setStore, user, campaignId, characterId, onBack, onNavigate, notify, mobileMenu, setMobileMenu }) {
+function CharacterPage({ store, setStore, user, campaignId, characterId, onBack, onOpenSessions, onNavigate, notify, mobileMenu, setMobileMenu }) {
   const campaign = getCampaignById(store, campaignId);
   const record = getCharacterById(store, characterId);
+  const [activeSession, setActiveSession] = useState(null);
+  useEffect(() => {
+    let active = true;
+    if (!campaign) return undefined;
+    getOpenCampaignSession(campaignId).then((session) => { if (active) setActiveSession(session); }).catch(() => { if (active) setActiveSession(null); });
+    return () => { active = false; };
+  }, [campaignId, campaign]);
   const allowed = Boolean(campaign && record && record.campaignId === campaignId && canViewCharacter(store, user.id, characterId));
   if (!allowed) return <CampaignAccessMessage title="Acesso à ficha negado" description="Jogadores só podem abrir a própria ficha. O mestre pode abrir qualquer personagem da campanha." onBack={onBack} />;
   const character = sanitizeTugOfWarState(record.data || record);
   const canEdit = Boolean(record.ownerUserId === user.id || getCampaignRole(store, user.id, campaignId) === "master");
+  const persistDeterminationChange = async ({ loss = false, amount = 1 } = {}) => {
+    const updated = await changeCharacterDetermination(characterId, { loss, amount });
+    setStore((current) => updateCharacterRecord(current, characterId, updated?.data || updated));
+    return updated;
+  };
+  const syncedCharacterData = JSON.stringify(record.data || record);
+  const lastSyncedCharacterData = useRef("");
+  useEffect(() => {
+    if (record.ownerUserId !== user.id || lastSyncedCharacterData.current === syncedCharacterData) return;
+    lastSyncedCharacterData.current = syncedCharacterData;
+    void updateRemoteCampaignCharacter(characterId, record.data || record).catch(() => {});
+  }, [characterId, record, syncedCharacterData, user.id]);
   const setCharacter = (updater) => setStore((current) => updateCharacterRecord(current, characterId, updater));
   const createItemForCampaign = (payload) => {
     const result = createCampaignItem(store, { ...payload, campaignId, createdByUserId: user.id });
@@ -1272,8 +1377,8 @@ function CharacterPage({ store, setStore, user, campaignId, characterId, onBack,
     return result.ok;
   };
   return <div className="app-shell">
-    <Sidebar active="sheet" onNavigate={(target) => document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" })} open={mobileMenu} onClose={() => setMobileMenu(false)} campaign={campaign} participantCount={getCampaignMemberships(store, campaignId).length} onCampaignClick={onBack} />
-    <main className="main-content"><Topbar character={character} campaign={campaign} onMenu={() => setMobileMenu(true)} onBackToCampaign={onBack} /><CharacterSheet key={`${campaignId}:${characterId}`} character={character} characterId={characterId} campaignId={campaignId} setCharacter={setCharacter} canEdit={canEdit} onNavigate={(target) => document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" })} notify={notify} store={store} availableItems={getCampaignAvailableItems(store, campaignId)} onCreateCampaignItem={createItemForCampaign} /></main>
+    <Sidebar active="sheet" showAssimilate={Boolean(character.isSusceptible || character.assimilationPending)} onNavigate={(target) => document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" })} open={mobileMenu} onClose={() => setMobileMenu(false)} campaign={campaign} participantCount={getCampaignMemberships(store, campaignId).length} onCampaignClick={onBack} onSessions={onOpenSessions} />
+    <main className="main-content"><Topbar character={character} campaign={campaign} activeSession={activeSession} onMenu={() => setMobileMenu(true)} onBackToCampaign={onBack} /><CharacterSheet key={`${campaignId}:${characterId}`} character={character} characterId={characterId} campaignId={campaignId} setCharacter={setCharacter} canEdit={canEdit} isOwner={record.ownerUserId === user.id} activeSession={activeSession} user={user} onChangeDetermination={record.ownerUserId === user.id ? persistDeterminationChange : undefined} onNavigate={(target) => document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" })} notify={notify} store={store} availableItems={getCampaignAvailableItems(store, campaignId)} onCreateCampaignItem={createItemForCampaign} /></main>
   </div>;
 }
 
@@ -1281,11 +1386,12 @@ function CampaignAccessMessage({ title, description, onBack }) {
   return <div className="campaign-page campaign-message-page"><div className="campaign-message"><div className="campaign-brand">∿ ASSIMILAÇÃO</div><span className="eyebrow">ACESSO</span><h1>{title}</h1><p>{description}</p><button type="button" className="campaign-primary-btn" onClick={onBack}>← Minhas campanhas</button></div></div>;
 }
 
-function Sidebar({ active, onNavigate, open, onClose, campaign, participantCount = 0, onCampaignClick }) {
+function Sidebar({ active, onNavigate, open, onClose, campaign, participantCount = 0, onCampaignClick, onSessions, showAssimilate = false }) {
   const items = [
     ["sheet", "Ficha do personagem", ClipboardList],
     ["assimilation", "Assimilações", Sparkles],
     ["inventory", "Inventário", Backpack],
+    ...(showAssimilate ? [["assimilate", "Assimilar", Flame]] : []),
   ];
   return (
     <>
@@ -1331,7 +1437,7 @@ function Sidebar({ active, onNavigate, open, onClose, campaign, participantCount
             <span>Participantes</span>
             <span className="count-badge">{participantCount || 4}</span>
           </button>
-          <button className="nav-item">
+          <button className="nav-item" onClick={onSessions}>
             <History size={18} />
             <span>Sessões</span>
           </button>
@@ -1350,7 +1456,7 @@ function Sidebar({ active, onNavigate, open, onClose, campaign, participantCount
   );
 }
 
-function Topbar({ character, campaign, onMenu, onBackToCampaign }) {
+function Topbar({ character, campaign, activeSession, onMenu, onBackToCampaign }) {
   return (
     <header className="topbar">
       <button
@@ -1366,9 +1472,9 @@ function Topbar({ character, campaign, onMenu, onBackToCampaign }) {
         <strong>{character.name}</strong>
       </div>
       <div className="top-actions">
-        <div className="session-chip">
-          <span className="live-dot" /> Sessão em andamento
-        </div>
+        {activeSession && <div className="session-chip">
+          <span className="live-dot" /> Sessão {activeSession.number} em andamento
+        </div>}
         <button className="icon-btn" aria-label="Buscar">
           <Search size={18} />
         </button>
@@ -1416,6 +1522,10 @@ function CharacterSheet({
   campaignId,
   setCharacter,
   canEdit,
+  isOwner,
+  activeSession,
+  user,
+  onChangeDetermination,
   onNavigate,
   notify,
   store,
@@ -1430,6 +1540,10 @@ function CharacterSheet({
         campaignId={campaignId}
         setCharacter={setCharacter}
         canEdit={canEdit}
+        isOwner={isOwner}
+        activeSession={activeSession}
+        user={user}
+        onChangeDetermination={onChangeDetermination}
         onNavigate={onNavigate}
         notify={notify}
         store={store}
@@ -1440,7 +1554,7 @@ function CharacterSheet({
   );
 }
 
-function OriginalSheet({ character, characterId, campaignId, setCharacter, canEdit, onNavigate, notify, store, availableItems, onCreateCampaignItem }) {
+function OriginalSheet({ character, characterId, campaignId, setCharacter, canEdit, isOwner, activeSession, user, onChangeDetermination, onNavigate, notify, store, availableItems, onCreateCampaignItem }) {
   const initialValues = Object.fromEntries([...instincts, ...knowledge, ...practices]);
   const [values, setValues] = useState(() => ({ ...initialValues, ...(character.aptitudes || {}) }));
   const [detailPopup, setDetailPopup] = useState(null);
@@ -1663,7 +1777,9 @@ function OriginalSheet({ character, characterId, campaignId, setCharacter, canEd
          <PaperMutations character={character} setCharacter={setCharacter} values={values} canEdit={canEdit} onOpenDetail={setDetailPopup} onNavigate={onNavigate} />
         <PaperAssimilations character={character} setCharacter={setCharacter} canEdit={canEdit} onOpenDetail={setDetailPopup} notify={notify} />
       </div>
-      <TugOfWar character={character} setCharacter={setCharacter} />
+      <TugOfWar character={character} setCharacter={setCharacter} onChangeDetermination={onChangeDetermination} />
+      <ProgressionPanel character={character} characterId={characterId} campaignId={campaignId} values={values} setCharacter={setCharacter} activeSession={activeSession} isOwner={isOwner} user={user} notify={notify} />
+      {(character.isSusceptible || character.assimilationPending) && <CharacterAssimilationPanel character={character} characterId={characterId} setCharacter={setCharacter} activeSession={activeSession} isOwner={isOwner} notify={notify} />}
       <section id="inventory" className="embedded-section paper-inventory-section">
         <Inventory key={`${campaignId || "campaign"}:${characterId || "character"}`} notify={notify} campaignId={campaignId} characterId={characterId} storageKey={characterId ? `${INVENTORY_STORAGE_KEY}:${characterId}` : INVENTORY_STORAGE_KEY} store={store} availableItems={availableItems} onCreateCampaignItem={onCreateCampaignItem} />
       </section>
@@ -1675,10 +1791,295 @@ function OriginalSheet({ character, characterId, campaignId, setCharacter, canEd
   );
 }
 
-function TugOfWar({ character, setCharacter }) {
+function CharacterAssimilationPanel({ character, characterId, setCharacter, activeSession, isOwner, notify }) {
+  const level = Number(character.assimilation?.level || 0);
+  const [flow, setFlow] = useState(() => createInitialAssimilationDraft(level));
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    setFlow(createInitialAssimilationDraft(level));
+    setError("");
+  }, [level, character.pendingAssimilation?.transitionId]);
+
+  const result = flow.test?.result || { success: 0, adaptation: 0, failure: 0 };
+  const isZeroResult = zeroAssimilationResult(result);
+  const counts = getRequiredAssimilationCardCounts(result);
+  const cardDraw = flow.cardDraw || {};
+  const cardsReady = isZeroResult || validateAssimilationCards(cardDraw, result).length === 0;
+  const updateFlow = (updater) => setFlow((current) => updater(current));
+  const resetCardDraw = () => ({
+    source: null,
+    evolutive: [],
+    adaptive: [],
+    inopportune: [],
+    singular: [],
+  });
+
+  const roll = () => updateFlow((current) => ({
+    ...current,
+    level,
+    test: rollAssimilationTest(level),
+    cardDraw: resetCardDraw(),
+    acquisitions: [],
+  }));
+
+  const manual = () => updateFlow((current) => ({
+    ...current,
+    level,
+    test: createManualAssimilationTest(level, current.test?.result || {}),
+    cardDraw: resetCardDraw(),
+    acquisitions: [],
+  }));
+
+  const confirm = () => updateFlow((current) => ({
+    ...current,
+    test: { ...current.test, confirmed: true },
+    cardDraw: zeroAssimilationResult(current.test.result)
+      ? { ...current.cardDraw, source: "none" }
+      : current.cardDraw,
+  }));
+
+  const chooseSource = (source) => updateFlow((current) => ({
+    ...current,
+    cardDraw: source === "digital"
+      ? drawAssimilationCards(current.test.result)
+      : { ...resetCardDraw(), source: "physical" },
+    acquisitions: [],
+  }));
+
+  const toggleCard = (family, item) => updateFlow((current) => {
+    const selected = current.cardDraw?.[family] || [];
+    const next = selected.some((card) => card.id === item.id)
+      ? selected.filter((card) => card.id !== item.id)
+      : selected.length >= counts[family]
+        ? selected
+        : [...selected, item];
+
+    return {
+      ...current,
+      cardDraw: { ...current.cardDraw, [family]: next },
+      acquisitions: [],
+    };
+  });
+
+  const acquire = (mutation) => updateFlow((current) => (
+    canAcquireMutation(
+      mutation,
+      getAssimilationBudget(current.test.result, current.acquisitions || []),
+      level,
+      current.acquisitions || [],
+    ).ok
+      ? { ...current, acquisitions: applyMutationPurchase(current.acquisitions || [], mutation) }
+      : current
+  ));
+
+  const remove = (mutationId) => updateFlow((current) => ({
+    ...current,
+    acquisitions: removeMutationPurchase(current.acquisitions || [], mutationId),
+  }));
+
+  const finish = async () => {
+    const errors = validateInitialAssimilation(flow, level);
+    if (errors.length) {
+      setError(errors.join(" "));
+      return;
+    }
+
+    setBusy(true);
+    setError("");
+    try { const updated = await completeCharacterAssimilation(characterId, { characterAssimilations: groupAssimilationAcquisitions(flow.acquisitions || []) }); setCharacter((current) => updated?.data || { ...current, assimilationPending: false, isSusceptible: false }); notify("Assimilação concluída; Determinação liberada."); } catch (nextError) { setError(nextError.message || "Não foi possível concluir a Assimilação."); } finally { setBusy(false); }
+  };
+
+  const families = [["evolutive", "Cartas Evolutivas", "Sucessos"], ["adaptive", "Cartas Adaptativas", "Adaptações"], ["inopportune", "Cartas Inoportunas", "Falhas"]];
+  if (!character.assimilationPending) {
+    return (
+      <section id="assimilate" className="paper-assimilate embedded-section">
+        <div className="paper-section-title">
+          <div>
+            <h2>ASSIMILAR</h2>
+            <span>ESTADO SUSCETÍVEL</span>
+          </div>
+        </div>
+        <p>
+          Se o personagem sofrer nova perda de Determinação enquanto estiver com seus
+          Pontos zerados, o nível diminuirá e a Assimilação avançará.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section id="assimilate" className="paper-assimilate embedded-section">
+      <div className="paper-section-title">
+        <div>
+          <h2>ASSIMILAR</h2>
+          <span>ASSIMILAÇÃO PENDENTE · NÍVEL {level}</span>
+        </div>
+        <strong>1 D6 + {level} D12</strong>
+      </div>
+
+      {activeSession && (
+        <p className="progression-lock">
+          A conclusão será registrada na Sessão {activeSession.number}.
+        </p>
+      )}
+      {error && <p className="progression-error" role="alert">{error}</p>}
+
+      {!flow.test?.result ? (
+        <div className="initial-assimilation-choice">
+          <p>Resolva o Teste de Assimilação.</p>
+          <div>
+            <button type="button" className="campaign-primary-btn" disabled={!isOwner} onClick={roll}>
+              Rolar digitalmente
+            </button>
+            <button type="button" className="campaign-secondary-btn" disabled={!isOwner} onClick={manual}>
+              Inserir resultado manual
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <InitialAssimilationResultSummary
+            result={result}
+            budget={getAssimilationBudget(result, flow.acquisitions || [])}
+          />
+
+          {flow.test.source === "manual" && !flow.test.confirmed && (
+            <div className="initial-assimilation-manual-grid">
+              {[["success", "Sucessos"], ["adaptation", "Adaptações"], ["failure", "Falhas"]].map(([key, label]) => (
+                <label key={key}>
+                  {label}
+                  <input
+                    type="number"
+                    min="0"
+                    value={result[key]}
+                    onChange={(event) => updateFlow((current) => ({
+                      ...current,
+                      test: {
+                        ...current.test,
+                        result: {
+                          ...current.test.result,
+                          [key]: Math.max(0, Number(event.target.value) || 0),
+                        },
+                      },
+                    }))}
+                  />
+                </label>
+              ))}
+            </div>
+          )}
+
+          {!flow.test.confirmed && (
+            <button type="button" className="campaign-primary-btn" disabled={!isOwner} onClick={confirm}>
+              Confirmar resultado
+            </button>
+          )}
+
+          {flow.test.confirmed && !isZeroResult && (
+            <>
+              <div className="initial-assimilation-choice">
+                <button type="button" className="campaign-secondary-btn" onClick={() => chooseSource("physical")}>
+                  Baralho físico
+                </button>
+                <button type="button" className="campaign-primary-btn" onClick={() => chooseSource("digital")}>
+                  Sorteio digital
+                </button>
+              </div>
+
+              {cardDraw.source === "physical" && families.map(([family, title, label]) => (
+                <div className="initial-assimilation-card-picker" key={family}>
+                  <div>
+                    <h4>{title}</h4>
+                    <span>{cardDraw[family]?.length || 0}/{counts[family]} {label}</span>
+                  </div>
+                  <div>
+                    {officialAssimilations.filter((item) => item.family === family).map((item) => (
+                      <button
+                        type="button"
+                        key={item.id}
+                        className={(cardDraw[family] || []).some((card) => card.id === item.id) ? "is-selected" : ""}
+                        onClick={() => toggleCard(family, item)}
+                      >
+                        {item.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              {cardsReady && cardDraw.source && (
+                <InitialAssimilationMutationList
+                  cardDraw={cardDraw}
+                  result={result}
+                  assimilationLevel={level}
+                  acquisitions={flow.acquisitions || []}
+                  onAcquire={acquire}
+                  onRemove={remove}
+                  onOpenDetail={() => {}}
+                />
+              )}
+            </>
+          )}
+
+          {flow.test.confirmed && (isZeroResult || (cardsReady && cardDraw.source)) && (
+            <button type="button" className="campaign-primary-btn" disabled={!isOwner || busy} onClick={finish}>
+              Concluir Assimilação
+            </button>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+function ProgressionPanel({ character, characterId, campaignId, values, setCharacter, activeSession, isOwner, notify }) {
+  const [xp, setXp] = useState({ available: 0, transactions: [] });
+  const [requests, setRequests] = useState([]);
+  const [mutationSession, setMutationSession] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const ownedCharacteristics = new Set(getCharacterCharacteristicRefs(character).map(getCharacteristicRefId).filter(Boolean));
+  const aptitudeGroups = [
+    ["Instintos", "instinct", instincts],
+    ["Conhecimentos", "knowledge", knowledge],
+    ["Práticas", "practice", practices],
+  ];
+  const refresh = async () => {
+    const [nextXp, nextMutationSession, nextRequests] = await Promise.all([getCharacterXp(characterId), getInstinctProgressionStatus(characterId), listCharacteristicRequests(campaignId)]);
+    setXp(nextXp);
+    setMutationSession(nextMutationSession);
+    setRequests(nextRequests.filter((request) => request.characterId === characterId));
+  };
+  useEffect(() => {
+    let active = true;
+    refresh().catch((nextError) => { if (active) setError(nextError.message || "Não foi possível carregar a progressão."); });
+    return () => { active = false; };
+  }, [characterId, campaignId]);
+  const upgrade = async (type, name) => {
+    const currentLevel = Number(values[name] || 0);
+    const cost = (currentLevel + 1) * (type === "instinct" ? 3 : 2);
+    if (!isOwner || activeSession || busy || xp.available < cost) return;
+    setBusy(true); setError("");
+    try { const updated = await purchaseAptitudeUpgrade(characterId, type, name); setCharacter((current) => updated?.data || current); await refresh(); notify(`${name} aumentou para ${currentLevel + 1}.`); } catch (nextError) { setError(nextError.message || "Não foi possível comprar este avanço."); } finally { setBusy(false); }
+  };
+  const requestCharacteristic = async (item) => {
+    if (!isOwner || activeSession || busy || ownedCharacteristics.has(item.id) || requests.some((request) => request.characteristicId === item.id && request.status === "pending")) return;
+    setBusy(true); setError("");
+    try { await requestCharacteristicPurchase(characterId, item.id, item.cost); await refresh(); notify("Solicitação enviada ao Mestre."); } catch (nextError) { setError(nextError.message || "Não foi possível solicitar a característica."); } finally { setBusy(false); }
+  };
+  const reviewCharacteristic = async (requestId, approve) => {
+    if (busy) return;
+    setBusy(true); setError("");
+    try { await reviewCharacteristicPurchase(requestId, approve); await refresh(); notify(approve ? "Característica aprovada." : "Solicitação recusada."); } catch (nextError) { setError(nextError.message || "Não foi possível revisar a solicitação."); } finally { setBusy(false); }
+  };
+  return <section id="progression" className="paper-progression embedded-section"><div className="paper-section-title"><div><h2>PROGRESSÃO</h2><span>EVOLUÇÃO ENTRE SESSÕES</span></div><strong>XP {xp.available}</strong></div>{activeSession && <p className="progression-lock">A progressão fica disponível após o encerramento da sessão atual.</p>}{error && <p className="progression-error" role="alert">{error}</p>}<div className="progression-aptitude-groups">{aptitudeGroups.map(([title, type, items]) => <div className="progression-aptitude-group" key={type}><h3>{title}</h3>{items.map(([name]) => { const currentLevel = Number(values[name] || 0); const cost = (currentLevel + 1) * (type === "instinct" ? 3 : 2); const lockedInstinct = type === "instinct" && !mutationSession; return <div className="progression-aptitude-row" key={name}><span>{name}<small>Nível {currentLevel} → {currentLevel + 1} · {cost} XP</small></span><button type="button" disabled={!isOwner || Boolean(activeSession) || lockedInstinct || xp.available < cost || busy} onClick={() => upgrade(type, name)}>{lockedInstinct ? "Bloqueado" : xp.available < cost ? "XP insuficiente" : "Aumentar"}</button></div>; })}</div>)}</div><div className="progression-characteristics"><div className="paper-section-title"><div><h3>CARACTERÍSTICAS</h3><span>REQUEREM AUTORIZAÇÃO DO MESTRE</span></div></div><div className="progression-characteristic-list">{characteristicCatalog.filter((item) => !item.initialCreationOnly).map((item) => { const request = requests.find((entry) => entry.characteristicId === item.id); const eligible = evaluateCharacteristicRequirement(item.requirements, values, character.assimilation?.level || 0); return <div className="progression-characteristic-row" key={item.id}><span><strong>{item.name}</strong><small>{item.cost} XP · {formatCharacteristicRequirement(item.requirements)}</small></span><button type="button" disabled={!isOwner || Boolean(activeSession) || ownedCharacteristics.has(item.id) || !eligible || request?.status === "pending" || busy} onClick={() => requestCharacteristic(item)}>{ownedCharacteristics.has(item.id) ? "Adquirida" : request?.status === "pending" ? "Aguardando Mestre" : !eligible ? "Requisito pendente" : "Solicitar ao Mestre"}</button>{!isOwner && request?.status === "pending" && <span className="progression-request-review"><button type="button" disabled={busy} onClick={() => reviewCharacteristic(request.id, true)}>Aprovar</button><button type="button" disabled={busy} onClick={() => reviewCharacteristic(request.id, false)}>Rejeitar</button></span>}</div>; })}</div></div><div className="progression-history"><div className="paper-section-title"><div><h3>HISTÓRICO DE XP</h3></div></div>{xp.transactions.length ? xp.transactions.map((transaction) => <div className="progression-history-row" key={transaction.id}><strong>{transaction.amount > 0 ? "+" : ""}{transaction.amount}</strong><span>{transaction.description}</span></div>) : <p>Nenhuma transação registrada.</p>}</div></section>;
+}
+
+function TugOfWar({ character, setCharacter, onChangeDetermination }) {
   const current = sanitizeTugOfWarState(character);
   const determination = current.determination;
   const assimilation = current.assimilation;
+  const [pointBusy, setPointBusy] = useState(false);
   const changeLevel = (side, amount) => setCharacter((value) => {
     const state = sanitizeTugOfWarState(value);
     const level = state[side].level + amount;
@@ -1691,7 +2092,7 @@ function TugOfWar({ character, setCharacter }) {
       ? setDeterminationLevel(value, level)
       : setAssimilationLevel(value, level)
   ));
-  const adjustPoints = (side, amount) => setCharacter((value) => {
+  const adjustLocalPoints = (side, amount) => setCharacter((value) => {
     if (side === "determination") {
       return amount < 0
         ? spendDeterminationPoints(value, Math.abs(amount))
@@ -1701,6 +2102,16 @@ function TugOfWar({ character, setCharacter }) {
       ? spendAssimilationPoints(value, Math.abs(amount))
       : restoreAssimilationPoints(value, amount);
   });
+  const adjustPoints = (side, amount) => {
+    if (side !== "determination" || !onChangeDetermination) {
+      adjustLocalPoints(side, amount);
+      return;
+    }
+    setPointBusy(true);
+    void onChangeDetermination({ loss: amount < 0, amount: Math.max(1, Math.abs(amount)) })
+      .catch(() => {})
+      .finally(() => setPointBusy(false));
+  };
   const togglePoint = (side, spent) => adjustPoints(side, spent ? 1 : -1);
   const renderPointBar = (index) => {
     const side = index < determination.level ? "determination" : "assimilation";
@@ -1716,7 +2127,7 @@ function TugOfWar({ character, setCharacter }) {
         key={index}
         type="button"
         className={`tug-bar tug-bar--${state}`}
-        disabled={!owned}
+        disabled={!owned || pointBusy || (side === "determination" && !onChangeDetermination)}
         onClick={() => owned && togglePoint(side, spent)}
         aria-label={owned
           ? `${side === "determination" ? "Determinação" : "Assimilação"}, ponto ${pointIndex + 1} de ${level}, ${spent ? "gasto" : "disponível"}`

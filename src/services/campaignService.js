@@ -33,6 +33,21 @@ function mapProfile(row) {
   return profile?.id ? { id: profile.id, name: profile.display_name || "Jogador" } : null;
 }
 
+function mapCharacter(row) {
+  return row?.id ? {
+    id: row.id,
+    campaignId: row.campaign_id,
+    ownerUserId: row.owner_user_id,
+    name: row.name,
+    data: row.data || {},
+    isSusceptible: row.is_susceptible,
+    assimilationPending: row.assimilation_pending,
+    pendingAssimilation: row.pending_assimilation,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  } : null;
+}
+
 export async function getMyProfile(userId) {
   const client = ensureClient();
   const { data, error } = await client.from("profiles").select("id, display_name, created_at, updated_at").eq("id", userId).maybeSingle();
@@ -54,11 +69,17 @@ export async function getCampaignMembers(campaignId) {
   const client = ensureClient();
   const { data, error } = await client
     .from("campaign_memberships")
-    .select("id, campaign_id, user_id, role, joined_at, profile:profiles(id, display_name)")
+    .select("id, campaign_id, user_id, role, joined_at, character_id, profile:profiles(id, display_name), character:campaign_characters(id, campaign_id, owner_user_id, name, data, is_susceptible, assimilation_pending, pending_assimilation, created_at, updated_at)")
     .eq("campaign_id", campaignId)
     .order("joined_at", { ascending: true });
   if (error) throw error;
-  return (data || []).map((row) => ({ membership: mapMembership(row), profile: mapProfile(row) })).filter((entry) => entry.profile);
+  return (data || []).map((row) => ({ membership: { ...mapMembership(row), characterId: row.character_id || null }, profile: mapProfile(row), character: mapCharacter(row.character) })).filter((entry) => entry.profile);
+}
+
+export async function listCampaignCharacters(campaignId) {
+  const { data, error } = await client().from("campaign_characters").select("id, campaign_id, owner_user_id, name, data, is_susceptible, assimilation_pending, pending_assimilation, created_at, updated_at").eq("campaign_id", campaignId).order("created_at", { ascending: true });
+  if (error) throw error;
+  return (data || []).map(mapCharacter);
 }
 
 export async function getCampaignState(userId) {
@@ -66,10 +87,11 @@ export async function getCampaignState(userId) {
   const campaigns = memberships.map(({ role, membershipId, ...campaign }) => ({ ...campaign }));
   const memberRows = await Promise.all(campaigns.map((campaign) => getCampaignMembers(campaign.id)));
   const allMemberships = memberRows.flatMap((rows) => rows.map(({ membership }) => membership));
+  const characters = memberRows.flatMap((rows) => rows.map(({ character }) => character).filter(Boolean));
   const users = memberRows.flatMap((rows) => rows.map(({ profile }) => profile));
   const ownProfile = await getMyProfile(userId);
   if (ownProfile && !users.some((user) => user.id === ownProfile.id)) users.push({ id: ownProfile.id, name: ownProfile.display_name || "Jogador" });
-  return { campaigns, memberships: allMemberships, users };
+  return { campaigns, memberships: allMemberships, users, characters };
 }
 
 export async function createCampaign(name) {
