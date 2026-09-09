@@ -637,6 +637,15 @@ function LoginPage({ signIn, signUp, requestPasswordReset }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [requestLoading, setRequestLoading] = useState(false);
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
+
+  useEffect(() => {
+    if (cooldownSeconds <= 0) return undefined;
+    const timer = window.setInterval(() => {
+      setCooldownSeconds((current) => (current <= 1 ? 0 : current - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [cooldownSeconds]);
   const submit = async (event) => {
     event.preventDefault();
     setError("");
@@ -652,6 +661,7 @@ function LoginPage({ signIn, signUp, requestPasswordReset }) {
   };
   const requestReset = async (event) => {
     event.preventDefault();
+    if (requestLoading || cooldownSeconds > 0) return;
     setError("");
     setNotice("");
     setRequestLoading(true);
@@ -667,16 +677,17 @@ function LoginPage({ signIn, signUp, requestPasswordReset }) {
       return;
     }
     setNotice("Se existir uma conta com esse email, enviaremos um link de recuperação.");
+    setCooldownSeconds(60);
   };
   if (mode === "forgot") {
-    return <main className="auth-page"><section className="auth-card"><div className="campaign-brand">∿ ASSIMILAÇÃO</div><span className="eyebrow">RECUPERAÇÃO DE ACESSO</span><h1>Esqueci minha senha</h1><p>Informe seu email para receber um link seguro de recuperação.</p><form className="auth-form" onSubmit={requestReset}><label>Email<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" /></label>{error && <p className="auth-form-error" role="alert">{error}</p>}{notice && <p className="auth-form-notice" role="status">{notice}</p>}<button type="submit" className="campaign-primary-btn" disabled={requestLoading}>{requestLoading ? "Enviando..." : "Enviar link de recuperação"}</button></form><button type="button" className="auth-mode-toggle" onClick={() => { setMode("signin"); setError(""); setNotice(""); }}>Voltar para login</button></section></main>;
+    return <main className="auth-page"><section className="auth-card"><div className="campaign-brand">∿ ASSIMILAÇÃO</div><span className="eyebrow">RECUPERAÇÃO DE ACESSO</span><h1>Esqueci minha senha</h1><p>Informe seu email para receber um link seguro de recuperação.</p><form className="auth-form" onSubmit={requestReset}><label>Email<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" /></label>{error && <p className="auth-form-error" role="alert">{error}</p>}{notice && <p className="auth-form-notice" role="status">{notice}</p>}<button type="submit" className="campaign-primary-btn" disabled={requestLoading || cooldownSeconds > 0}>{requestLoading ? "Enviando..." : cooldownSeconds > 0 ? `Reenviar em ${cooldownSeconds}s` : "Enviar link de recuperação"}</button></form><button type="button" className="auth-mode-toggle" onClick={() => { setMode("signin"); setError(""); setNotice(""); }}>Voltar para login</button></section></main>;
   }
   return <main className="auth-page"><section className="auth-card"><div className="campaign-brand">∿ ASSIMILAÇÃO</div><span className="eyebrow">CAMPANHAS VIVAS</span><h1>{mode === "signin" ? "Entrar" : "Criar conta"}</h1><p>{mode === "signin" ? "Entre para acessar suas campanhas e fichas." : "Crie seu acesso para jogar com outras pessoas."}</p><form className="auth-form" onSubmit={submit}>{mode === "signup" && <label>Nome de exibição<input required value={displayName} onChange={(event) => setDisplayName(event.target.value)} autoComplete="name" /></label>}<label>Email<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" /></label><label>Senha<input required type="password" minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === "signin" ? "current-password" : "new-password"} /></label>{error && <p className="auth-form-error" role="alert">{error}</p>}{notice && <p className="auth-form-notice" role="status">{notice}</p>}<button type="submit" className="campaign-primary-btn">{mode === "signin" ? "Entrar" : "Criar conta"}</button></form>{mode === "signin" && <button type="button" className="auth-forgot-link" onClick={() => { setMode("forgot"); setError(""); setNotice(""); }}>Esqueci minha senha</button>}<button type="button" className="auth-mode-toggle" onClick={() => { setMode(mode === "signin" ? "signup" : "signin"); setError(""); setNotice(""); }}>{mode === "signin" ? "Ainda não tenho conta" : "Já tenho uma conta"}</button></section></main>;
 }
 
 function formatAuthError(error, fallback) {
   const message = String(error?.message || "").toLowerCase();
-  if (message.includes("rate limit") || message.includes("too many")) return "Muitas tentativas. Aguarde alguns minutos e tente novamente.";
+  if (message.includes("rate limit") || message.includes("too many")) return "Muitas tentativas de recuperação. Aguarde alguns minutos antes de solicitar outro link.";
   if (message.includes("invalid email") || message.includes("email address")) return "Informe um email válido.";
   if (message.includes("expired") || message.includes("invalid token") || message.includes("otp")) return "Link de recuperação inválido ou expirado.";
   if (message.includes("password") && (message.includes("weak") || message.includes("short") || message.includes("least"))) return "A senha precisa ter pelo menos 8 caracteres.";
