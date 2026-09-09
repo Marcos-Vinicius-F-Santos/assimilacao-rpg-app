@@ -318,25 +318,6 @@ export function canCreateCampaignCharacter(store, userId, campaignId) {
   return Boolean(membership && !membership.characterId);
 }
 
-export function createCampaignCharacter(store, { campaignId, ownerUserId, data = {}, sourcePersonalCharacterId = null } = {}) {
-  const membership = getMembershipForUser(store, ownerUserId, campaignId);
-  if (!membership) return { ok: false, reason: "not-member" };
-  if (membership.characterId || (store.characters || []).some((character) => character.campaignId === campaignId && character.ownerUserId === ownerUserId)) return { ok: false, reason: "character-exists" };
-  const snapshot = characterDataSnapshot(data);
-  const characterName = String(snapshot.name || "").trim();
-  if (!characterName) return { ok: false, reason: "name-required" };
-  const now = new Date().toISOString();
-  const character = { id: createId("character"), campaignId, ownerUserId, name: characterName, data: { ...snapshot, name: characterName, creationCompleted: true, createdAt: now, sourcePersonalCharacterId }, sourcePersonalCharacterId, createdAt: now, updatedAt: now };
-  const nextStore = saveCampaignStore({ ...store, characters: [...(store.characters || []), character], memberships: store.memberships.map((item) => item.id === membership.id ? { ...item, characterId: character.id } : item) });
-  return { ok: true, character, store: nextStore };
-}
-
-export function createCampaignCharacterFromPersonal(store, { campaignId, ownerUserId, personalCharacterId } = {}) {
-  const personal = getPersonalCharacterById(store, personalCharacterId);
-  if (!personal || personal.ownerUserId !== ownerUserId) return { ok: false, reason: "not-authorized" };
-  return createCampaignCharacter(store, { campaignId, ownerUserId, data: personal.snapshot, sourcePersonalCharacterId: personal.id });
-}
-
 export function saveCampaignCharacterAsPersonal(store, { characterId, ownerUserId, personalCharacterId = null } = {}) {
   const character = getCharacterById(store, characterId);
   if (!character || character.ownerUserId !== ownerUserId) return { ok: false, reason: "not-authorized" };
