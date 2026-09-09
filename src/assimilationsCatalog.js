@@ -417,6 +417,28 @@ export const assimilationCatalogById = Object.fromEntries(
   officialAssimilations.map((assimilation) => [assimilation.id, assimilation]),
 );
 
+export function getAssimilationRefId(reference) {
+  if (typeof reference === "string") return reference;
+  if (!reference || typeof reference !== "object") return null;
+  return reference.assimilationId || reference.catalogId || reference.id || null;
+}
+
+export function getCharacterAssimilationRefs(character) {
+  const canonical = Array.isArray(character?.characterAssimilations) ? character.characterAssimilations : [];
+  const legacy = Array.isArray(character?.assimilations) ? character.assimilations : [];
+  const seenIds = new Set();
+  return [...canonical, ...legacy]
+    .map((reference) => typeof reference === "string" ? { assimilationId: reference } : reference)
+    .filter((reference) => {
+      if (!reference) return false;
+      const id = getAssimilationRefId(reference);
+      if (!id) return true;
+      if (seenIds.has(id)) return false;
+      seenIds.add(id);
+      return true;
+    });
+}
+
 export function validateAssimilationCatalog(catalog = officialAssimilations) {
   const issues = [];
   const ids = new Set();

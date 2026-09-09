@@ -44,6 +44,10 @@ import {
   assimilationCatalogStatus,
   assimilationFamilies,
   assimilationFamilyLabels,
+  assimilationCatalogById,
+  officialAssimilations,
+  getAssimilationRefId,
+  getCharacterAssimilationRefs,
   getAssimilationSearchText,
 } from "./assimilationsCatalog";
 import {
@@ -270,59 +274,6 @@ const symbolAssets = {
   failure: owlSymbolAsset,
   adaptation: deerSymbolAsset,
 };
-
-const assimilationCards = [
-  {
-    name: "Fotossíntese",
-    code: "EV · 03",
-    type: "Evolutiva",
-    tone: "evo",
-    status: "Ativa",
-    cost: "E 3+",
-    effect:
-      "Seu corpo converte luz em energia. Reduz a necessidade de alimento, desde que haja água, solo e exposição solar.",
-  },
-  {
-    name: "Faro Apurado",
-    code: "AD · 01",
-    type: "Adaptativa",
-    tone: "adapt",
-    status: "Disponível",
-    cost: "A 1",
-    effect:
-      "Identifique substâncias químicas simples e perceba odores em níveis residuais, como feromônios e putrefação.",
-  },
-  {
-    name: "Raízes",
-    code: "EV · 07",
-    type: "Evolutiva",
-    tone: "evo",
-    status: "Bloqueada",
-    cost: "E 5+",
-    effect:
-      "Ao repousar, raízes extraem água e nutrientes do solo. Dormir sem contato direto impede a recuperação de Determinação.",
-  },
-  {
-    name: "Rigidez Muscular",
-    code: "IN · 02",
-    type: "Inoportuna",
-    tone: "ino",
-    status: "Pressão 1/6",
-    cost: "C",
-    effect:
-      "Um processo degenerativo impõe penalidade em testes que incluam Potência.",
-  },
-  {
-    name: "Quimiorreceptora",
-    code: "SI · 02",
-    type: "Singular",
-    tone: "singular",
-    status: "Descoberta",
-    cost: "E 3+",
-    effect:
-      "O olfato evolui para ler rastros, mentiras e histórias químicas. O mundo se torna um tormento sensorial.",
-  },
-];
 
 // Instâncias iniciais da ficha. Os itens novos referenciam o catálogo por catalogItemId;
 // os registros antigos continuam com seus próprios dados para preservar compatibilidade.
@@ -888,7 +839,7 @@ function CharacterCreationPage({ store, setStore, user, campaign = null, mode = 
     if (step.id === "aptitudes") return <><div className="creation-budget-row"><span>Instintos: <b>{instinctsTotal}/9</b></span><span>Conhecimentos + Práticas: <b>{baseLearnedTotal}/7</b></span></div><div className="creation-aptitudes-grid">{renderAptitudeGroup("Instintos", "instincts", creationInstinctNames, 3)}{renderAptitudeGroup("Conhecimentos", "knowledge", creationKnowledgeNames, 2)}{renderAptitudeGroup("Práticas", "practices", creationPracticeNames, 2)}</div></>;
     if (step.id === "tug") return <div className="creation-summary-panel"><span>Nível inicial da campanha</span><strong>Determinação {tug.determinationLevel} / Assimilação {tug.assimilationLevel}</strong><p>Os Pontos começam preenchidos até o respectivo nível. O padrão pessoal é 9/1.</p>{selectedCharacteristics.includes("estagio-avancado") && <small>Estágio Avançado aplicado: requer aprovação do mestre quando usado em campanha.</small>}</div>;
     if (step.id === "health") return <div className="creation-summary-panel"><span>Saúde por nível</span><strong>1 + Potência {aptitudes.Potência} + Resolução {aptitudes.Resolução} = {health}</strong><p>Os seis níveis recebem automaticamente esta capacidade. Nenhuma gota precisa ser preenchida manualmente.</p><div className="creation-health-list">{defaultHealthLevels.map((level) => <span key={level.label}>{level.label}<b>{health}</b></span>)}</div></div>;
-    if (step.id === "characteristics") return <><div className="creation-budget-row"><span>XP inicial: <b>7</b></span><span>Gasto: <b>{characteristicsCost + aptitudeXpCost}</b></span><span>Restante: <b className={xpRemaining < 0 ? "is-error" : ""}>{xpRemaining}</b></span></div><div className="creation-characteristic-grid">{characteristicCatalog.map((item) => { const selected = selectedCharacteristics.includes(item.id); const eligible = evaluateCharacteristicRequirement(item.requirements, aptitudes, tug.assimilationLevel); return <button type="button" className={`creation-characteristic ${selected ? "is-selected" : ""} ${!eligible ? "is-ineligible" : ""}`} key={item.id} disabled={!selected && (!eligible || characteristicsCost + item.cost + aptitudeXpCost > 7)} onClick={() => toggleCharacteristic(item)}><strong>{item.name}</strong><span>{item.cost} XP · {formatCharacteristicRequirement(item.requirements)}</span>{selected && <em>Selecionada</em>}</button>; })}</div>{selectedCharacteristics.includes("sentido-agucado") && <label className="creation-field">Escolha para Sentido Aguçado<select value={draft.characteristics.choices.sense || ""} onChange={(event) => updateNested("characteristics", { choices: { ...draft.characteristics.choices, sense: event.target.value } })}><option value="">Escolha um sentido</option>{["Visão", "Audição", "Tato", "Paladar", "Olfato"].map((sense) => <option key={sense}>{sense}</option>)}</select></label>}<div className="creation-upgrades"><h3>XP em Conhecimentos e Práticas</h3><p>O próximo nível custa 2 × o nível desejado. Instintos não usam este XP.</p>{[...creationKnowledgeNames, ...creationPracticeNames].map((name) => { const group = creationKnowledgeNames.includes(name) ? "knowledge" : "practices"; const value = Number(draft.baseAptitudes[group][name]) + Number(draft.xpUpgrades[group][name]); const nextCost = 2 * (value + 1); return <div className="creation-upgrade-row" key={name}><span>{name} <b>{value}</b></span><button type="button" disabled={!draft.xpUpgrades[group][name]} onClick={() => updateUpgrade(group, name, -1)}>−</button><small>{nextCost} XP</small><button type="button" disabled={xpRemaining < nextCost} onClick={() => updateUpgrade(group, name, 1)}>+</button></div>; })}</div></>;
+    if (step.id === "characteristics") return <><div className="creation-budget-row"><span>XP inicial: <b>7</b></span><span>Gasto: <b>{characteristicsCost + aptitudeXpCost}</b></span><span>Restante: <b className={xpRemaining < 0 ? "is-error" : ""}>{xpRemaining}</b></span></div><div className="creation-characteristic-grid">{characteristicCatalog.map((item) => { const selected = selectedCharacteristics.includes(item.id); const eligible = evaluateCharacteristicRequirement(item.requirements, aptitudes, tug.assimilationLevel); return <button type="button" className={`creation-characteristic ${selected ? "is-selected" : ""} ${!eligible ? "is-ineligible" : ""}`} key={item.id} disabled={!selected && (!eligible || characteristicsCost + item.cost + aptitudeXpCost > 7)} onClick={() => toggleCharacteristic(item)}><strong>{item.name}</strong><span>{item.cost} XP · {formatCharacteristicRequirement(item.requirements)}</span><p className="creation-characteristic-description">{item.description}</p>{selected && <em>Selecionada</em>}</button>; })}</div>{selectedCharacteristics.includes("sentido-agucado") && <label className="creation-field">Escolha para Sentido Aguçado<select value={draft.characteristics.choices.sense || ""} onChange={(event) => updateNested("characteristics", { choices: { ...draft.characteristics.choices, sense: event.target.value } })}><option value="">Escolha um sentido</option>{["Visão", "Audição", "Tato", "Paladar", "Olfato"].map((sense) => <option key={sense}>{sense}</option>)}</select></label>}<div className="creation-upgrades"><h3>XP em Conhecimentos e Práticas</h3><p>O próximo nível custa 2 × o nível desejado. Instintos não usam este XP.</p>{[...creationKnowledgeNames, ...creationPracticeNames].map((name) => { const group = creationKnowledgeNames.includes(name) ? "knowledge" : "practices"; const value = Number(draft.baseAptitudes[group][name]) + Number(draft.xpUpgrades[group][name]); const nextCost = 2 * (value + 1); return <div className="creation-upgrade-row" key={name}><span>{name} <b>{value}</b></span><button type="button" disabled={!draft.xpUpgrades[group][name]} onClick={() => updateUpgrade(group, name, -1)}>−</button><small>{nextCost} XP</small><button type="button" disabled={xpRemaining < nextCost} onClick={() => updateUpgrade(group, name, 1)}>+</button></div>; })}</div></>;
     if (step.id === "equipment") return <><div className="creation-option-grid creation-package-grid">{startingEquipmentPackages.map((pack) => <button type="button" key={pack.id} className={`creation-option ${draft.equipment.packageId === pack.id ? "is-selected" : ""}`} onClick={() => updateNested("equipment", { packageId: pack.id, choiceIds: [] })}><strong>{pack.name}</strong><span>{pack.itemIds.map((id) => itemCatalogById[id]?.name).filter(Boolean).join(" · ")}</span></button>)}</div>{selectedPack?.choice && <fieldset className="creation-choice-fieldset"><legend>Escolha {selectedPack.choice.count} armas para o pacote {selectedPack.name}</legend>{selectedPack.choice.options.map((itemId) => <label key={itemId}><input type="checkbox" checked={draft.equipment.choiceIds.includes(itemId)} disabled={!draft.equipment.choiceIds.includes(itemId) && draft.equipment.choiceIds.length >= selectedPack.choice.count} onChange={() => updateNested("equipment", { choiceIds: draft.equipment.choiceIds.includes(itemId) ? draft.equipment.choiceIds.filter((id) => id !== itemId) : [...draft.equipment.choiceIds, itemId] })} />{itemCatalogById[itemId]?.name}</label>)}</fieldset>}</>;
     return <div className="creation-review"><div><b>Identidade</b><span>{draft.identity.name} · {draft.generation.id || "Geração não escolhida"}</span></div><div><b>Origens</b><span>{draft.origins.event} · {draft.origins.occupation}</span></div><div><b>Propósitos</b><span>{draft.purposes.personal.join(" · ")} · {draft.purposes.collective.join(" · ")}</span></div><div><b>Aptidões</b><span>Instintos {instinctsTotal}/9 · Conhecimentos/Práticas {baseLearnedTotal}/7</span></div><div><b>Cabo e Saúde</b><span>Determinação {tug.determinationLevel} / Assimilação {tug.assimilationLevel} · {health} pontos por nível</span></div><div><b>Características e XP</b><span>{selectedCharacteristics.length} selecionada(s) · {xpRemaining} XP restante(s)</span></div><div><b>Equipamentos</b><span>{selectedPack?.name || "Nenhum pacote"} · {getSelectedEquipmentIds(draft).length} itens</span></div></div>;
   };
@@ -1135,6 +1086,7 @@ function CharacterPage({ store, setStore, user, campaignId, characterId, onBack,
   const allowed = Boolean(campaign && record && record.campaignId === campaignId && canViewCharacter(store, user.id, characterId));
   if (!allowed) return <CampaignAccessMessage title="Acesso à ficha negado" description="Jogadores só podem abrir a própria ficha. O mestre pode abrir qualquer personagem da campanha." onBack={onBack} />;
   const character = sanitizeTugOfWarState(record.data || record);
+  const canEdit = Boolean(record.ownerUserId === user.id || getCampaignRole(store, user.id, campaignId) === "master");
   const setCharacter = (updater) => setStore((current) => updateCharacterRecord(current, characterId, updater));
   const createItemForCampaign = (payload) => {
     const result = createCampaignItem(store, { ...payload, campaignId, createdByUserId: user.id });
@@ -1146,7 +1098,7 @@ function CharacterPage({ store, setStore, user, campaignId, characterId, onBack,
   };
   return <div className="app-shell">
     <Sidebar active="sheet" onNavigate={(target) => document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" })} open={mobileMenu} onClose={() => setMobileMenu(false)} campaign={campaign} participantCount={getCampaignMemberships(store, campaignId).length} onCampaignClick={onBack} />
-    <main className="main-content"><Topbar character={character} campaign={campaign} onMenu={() => setMobileMenu(true)} onBackToCampaign={onBack} /><CharacterSheet key={`${campaignId}:${characterId}`} character={character} characterId={characterId} campaignId={campaignId} setCharacter={setCharacter} onNavigate={(target) => document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" })} notify={notify} store={store} availableItems={getCampaignAvailableItems(store, campaignId)} onCreateCampaignItem={createItemForCampaign} /></main>
+    <main className="main-content"><Topbar character={character} campaign={campaign} onMenu={() => setMobileMenu(true)} onBackToCampaign={onBack} /><CharacterSheet key={`${campaignId}:${characterId}`} character={character} characterId={characterId} campaignId={campaignId} setCharacter={setCharacter} canEdit={canEdit} onNavigate={(target) => document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" })} notify={notify} store={store} availableItems={getCampaignAvailableItems(store, campaignId)} onCreateCampaignItem={createItemForCampaign} /></main>
   </div>;
 }
 
@@ -1288,6 +1240,7 @@ function CharacterSheet({
   characterId,
   campaignId,
   setCharacter,
+  canEdit,
   onNavigate,
   notify,
   store,
@@ -1301,6 +1254,7 @@ function CharacterSheet({
         characterId={characterId}
         campaignId={campaignId}
         setCharacter={setCharacter}
+        canEdit={canEdit}
         onNavigate={onNavigate}
         notify={notify}
         store={store}
@@ -1311,7 +1265,7 @@ function CharacterSheet({
   );
 }
 
-function OriginalSheet({ character, characterId, campaignId, setCharacter, onNavigate, notify, store, availableItems, onCreateCampaignItem }) {
+function OriginalSheet({ character, characterId, campaignId, setCharacter, canEdit, onNavigate, notify, store, availableItems, onCreateCampaignItem }) {
   const initialValues = Object.fromEntries([...instincts, ...knowledge, ...practices]);
   const [values, setValues] = useState(() => ({ ...initialValues, ...(character.aptitudes || {}) }));
   const [detailPopup, setDetailPopup] = useState(null);
@@ -1531,8 +1485,8 @@ function OriginalSheet({ character, characterId, campaignId, setCharacter, onNav
         <HealthTracker health={healthTotal} levels={defaultHealthLevels} damagedPips={damagedPips} onToggleDamage={(pipKey) => setDamagedPips((current) => ({ ...current, [pipKey]: !current[pipKey] }))} />
       </div>
       <div className="paper-lists-grid">
-         <PaperMutations character={character} setCharacter={setCharacter} values={values} onOpenDetail={setDetailPopup} onNavigate={onNavigate} />
-        <PaperAssimilations onOpenDetail={setDetailPopup} notify={notify} />
+         <PaperMutations character={character} setCharacter={setCharacter} values={values} canEdit={canEdit} onOpenDetail={setDetailPopup} onNavigate={onNavigate} />
+        <PaperAssimilations character={character} setCharacter={setCharacter} canEdit={canEdit} onOpenDetail={setDetailPopup} notify={notify} />
       </div>
       <TugOfWar character={character} setCharacter={setCharacter} />
       <section id="inventory" className="embedded-section paper-inventory-section">
@@ -1762,23 +1716,17 @@ function CharacteristicDetail({ item, reference, onOpenDetail, onRemove }) {
   const choice = reference?.choices?.sense;
   return <div className="paper-mutation paper-characteristic-entry">
     <div className="paper-characteristic-row">
-      <button className="paper-mutation-head" onClick={() => onOpenDetail({ category: "Característica", symbol: item ? `${item.cost}` : "C", name: choice ? `${name.replace("[Sentido]", "Sentido")} — ${choice}` : name, description, label: "Requisito", meta: requirement })}>
+      <button type="button" className="paper-mutation-head" onClick={() => onOpenDetail({ category: "Característica", symbol: item ? `${item.cost}` : "C", name: choice ? `${name.replace("[Sentido]", "Sentido")} — ${choice}` : name, description, label: "Requisito", meta: requirement })}>
         <span className="paper-mutation-symbol">{item ? item.cost : "C"}</span>
-        <span className="paper-mutation-copy"><strong>{choice ? `${name.replace("[Sentido]", "Sentido")} — ${choice}` : name}</strong><small>{item ? `${item.cost} ${item.cost === 1 ? "ponto" : "pontos"} · ${requirement}` : "Característica preservada"}</small></span>
+        <span className="paper-mutation-copy"><strong>{choice ? `${name.replace("[Sentido]", "Sentido")} — ${choice}` : name}</strong><small>{item ? `${item.cost} ${item.cost === 1 ? "ponto" : "pontos"}` : "Característica preservada"}</small></span>
         <ChevronRight className="paper-mutation-chevron" size={15} />
       </button>
       {onRemove && <button type="button" className="paper-characteristic-remove" onClick={onRemove} aria-label={`Remover ${name}`}><X size={13} /></button>}
     </div>
-    {item && <div className="paper-characteristic-summary"><span><b>Requisito:</b> {requirement}</span><p>{description}</p></div>}
   </div>;
 }
 
-function PaperMutations({ character, setCharacter, values, onOpenDetail, onNavigate }) {
-  const mutations = [
-    ["Fotorreceptores", "B", "Pelos corporais se tornam folhas e passam a realizar fotossíntese. Basta água, contato direto com o solo e duas horas de luz solar por dia.", "Assimilação A 1"],
-    ["Mãos de Raiz", "A", "As extremidades dos dedos desenvolvem filamentos flexíveis. Ao tocar uma superfície natural, você consegue sentir vibrações sutis.", "Assimilação A 1"],
-    ["Sensibilidade à luz", "C", "A claridade intensa causa desconforto. Testes de Percepção sob luz direta sofrem penalidade de B.", "Pressão C"],
-  ];
+function PaperMutations({ character, setCharacter, values, canEdit, onOpenDetail, onNavigate }) {
   const [catalogState, setCatalogState] = useState(null);
   const refs = getCharacterCharacteristicRefs(character);
   const canonicalRefs = Array.isArray(character.characterCharacteristics) ? character.characterCharacteristics : [];
@@ -1803,19 +1751,12 @@ function PaperMutations({ character, setCharacter, values, onOpenDetail, onNavig
   return <section className="paper-mutations">
     <div className="paper-section-title"><h2>CARACTERÍSTICAS</h2></div>
     <div className="paper-mutation-list">
-      {mutations.map(([name, symbol, detail, requirement]) => <div className="paper-mutation" key={name}>
-        <button className="paper-mutation-head" onClick={() => onOpenDetail({ category: "Característica", symbol, name, description: detail, label: "Requisito", meta: requirement })}>
-          <span className="paper-mutation-symbol">{symbol}</span>
-          <span className="paper-mutation-copy"><strong>{name}</strong></span>
-          <ChevronRight className="paper-mutation-chevron" size={15} />
-         </button>
-       </div>)}
       {refs.map((reference, index) => {
         const item = characteristicCatalogById[getCharacteristicRefId(reference)];
-        return <CharacteristicDetail key={`${getCharacteristicRefId(reference) || "legacy"}-${index}`} item={item} reference={reference} onOpenDetail={onOpenDetail} onRemove={canonicalRefs.includes(reference) ? () => removeCharacteristic(reference) : null} />;
+        return <CharacteristicDetail key={`${getCharacteristicRefId(reference) || "legacy"}-${index}`} item={item} reference={reference} onOpenDetail={onOpenDetail} onRemove={canEdit && canonicalRefs.includes(reference) ? () => removeCharacteristic(reference) : null} />;
       })}
     </div>
-    <button type="button" className="paper-add-btn" onClick={() => setCatalogState({ selectedId: null, search: "", cost: "all" })}><Plus size={14} /> CARACTERÍSTICA</button>
+    {canEdit && <button type="button" className="paper-add-btn" onClick={() => setCatalogState({ selectedId: null, search: "", cost: "all" })}><Plus size={14} /> CARACTERÍSTICA</button>}
     {catalogState && <CharacteristicCatalogModal state={catalogState} setState={setCatalogState} values={values} character={character} acquiredIds={acquiredIds} onAdd={addCharacteristic} />}
   </section>;
 }
@@ -1910,20 +1851,140 @@ function PaperNotes({ notify }) {
   </section>;
 }
 
-function PaperAssimilations({ onOpenDetail, notify }) {
+const assimilationFamilyShortLabels = { evolutive: "EV", adaptive: "AD", inopportune: "IN", singular: "SI" };
+
+function assimilationDetail(item) {
+  return {
+    category: "Assimilação",
+    symbol: item.rank,
+    name: item.name,
+    type: assimilationFamilyLabels[item.family],
+    description: item.description,
+    label: "Nível",
+    meta: `${item.level} · ${assimilationFamilyShortLabels[item.family]}`,
+    abilities: item.abilities,
+  };
+}
+
+function PaperAssimilations({ character, setCharacter, canEdit, onOpenDetail, notify }) {
+  const [catalogState, setCatalogState] = useState(null);
+  const refs = getCharacterAssimilationRefs(character);
+  const canonicalRefs = Array.isArray(character.characterAssimilations) ? character.characterAssimilations : [];
+  const acquiredIds = new Set(refs.map(getAssimilationRefId).filter((id) => assimilationCatalogById[id]));
+  const addAssimilation = (assimilationId) => {
+    setCharacter((current) => {
+      const existing = getCharacterAssimilationRefs(current);
+      if (existing.some((reference) => getAssimilationRefId(reference) === assimilationId)) return current;
+      const currentCanonical = Array.isArray(current.characterAssimilations) ? current.characterAssimilations : [];
+      return { ...current, characterAssimilations: [...currentCanonical, { assimilationId }] };
+    });
+    setCatalogState(null);
+    notify("Assimilação adicionada à ficha.");
+  };
+  const removeAssimilation = (reference) => setCharacter((current) => {
+    const currentCanonical = Array.isArray(current.characterAssimilations) ? current.characterAssimilations : [];
+    const referenceId = getAssimilationRefId(reference);
+    const index = currentCanonical.findIndex((entry) => entry === reference || getAssimilationRefId(entry) === referenceId);
+    return index < 0 ? current : { ...current, characterAssimilations: currentCanonical.filter((_, entryIndex) => entryIndex !== index) };
+  });
+  const openAssimilationDetail = (item, reference) => onOpenDetail(item ? assimilationDetail(item) : {
+    category: "Assimilação",
+    symbol: reference?.rank || "A",
+    name: reference?.name || "Assimilação preservada",
+    type: reference?.family || "Catálogo antigo",
+    description: reference?.description || "Descrição preservada da ficha.",
+    label: "Referência",
+    meta: reference?.assimilationId || "Registro legado",
+    abilities: reference?.abilities,
+  });
   return <section id="assimilation" className="paper-assimilations">
     <div className="paper-section-title"><h2>ASSIMILAÇÕES</h2></div>
     <div className="paper-mutation-list">
-      {assimilationCards.map((card) => <article className={`paper-mutation paper-assimilation ${card.tone}`} key={card.name}>
-        <button className="paper-mutation-head" onClick={() => onOpenDetail({ category: "Assimilação", symbol: card.code.slice(0, 2), name: card.name, type: card.type, description: card.effect, label: "Custo", meta: `${card.cost} · ${card.status}` })}>
-          <span className={`paper-mutation-symbol ${card.tone === "ino" ? "pressure" : ""}`}>{card.code.slice(0, 2)}</span>
-          <span className="paper-mutation-copy"><strong>{card.name}</strong><small>{card.type}</small></span>
-          <ChevronRight className="paper-mutation-chevron" size={15} />
-        </button>
-      </article>)}
+      {refs.length ? refs.map((reference, index) => {
+        const item = assimilationCatalogById[getAssimilationRefId(reference)];
+        const name = item?.name || reference?.name || "Assimilação preservada";
+        const family = item ? assimilationFamilyLabels[item.family] : reference?.family || "Catálogo antigo";
+        return <div className="paper-mutation paper-assimilation" key={`${getAssimilationRefId(reference) || "legacy"}-${index}`}>
+          <div className="paper-characteristic-row">
+            <button type="button" className="paper-mutation-head" onClick={() => openAssimilationDetail(item, reference)}>
+              <span className="paper-mutation-symbol">{item ? item.rank : reference?.rank || "A"}</span>
+              <span className="paper-mutation-copy"><strong>{name}</strong><small>{item ? `${assimilationFamilyShortLabels[item.family]} · ${family} · Nível ${item.level}` : family}</small></span>
+              <ChevronRight className="paper-mutation-chevron" size={15} />
+            </button>
+            {canEdit && canonicalRefs.includes(reference) && <button type="button" className="paper-characteristic-remove" onClick={() => removeAssimilation(reference)} aria-label={`Remover ${name}`}><X size={13} /></button>}
+          </div>
+        </div>;
+      }) : <p className="paper-empty-list">Nenhuma assimilação adicionada à ficha.</p>}
     </div>
-    <button className="paper-add-btn" onClick={() => notify("Nova assimilação pronta para cadastrar")}><Plus size={14} /> Adicionar assimilação</button>
+    {canEdit && <button type="button" className="paper-add-btn" onClick={() => setCatalogState({ selectedId: null, search: "", family: "all", level: "all" })}><Plus size={14} /> ADICIONAR ASSIMILAÇÃO</button>}
+    {catalogState && <AssimilationCatalogModal state={catalogState} setState={setCatalogState} acquiredIds={acquiredIds} onAdd={addAssimilation} />}
   </section>;
+}
+
+function AssimilationCatalogModal({ state, setState, acquiredIds, onAdd }) {
+  const search = state.search.trim().toLocaleLowerCase("pt-BR");
+  const visibleAssimilations = officialAssimilations.filter((item) => {
+    const matchesSearch = !search || getAssimilationSearchText(item).toLocaleLowerCase("pt-BR").includes(search);
+    const matchesFamily = state.family === "all" || item.family === state.family;
+    const matchesLevel = state.level === "all" || item.level === Number(state.level);
+    return matchesSearch && matchesFamily && matchesLevel;
+  });
+  const selectedItem = assimilationCatalogById[state.selectedId];
+  const selectedAcquired = Boolean(selectedItem && acquiredIds.has(selectedItem.id));
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    const previousDocumentOverflow = document.documentElement.style.overflow;
+    const previousScrollY = window.scrollY;
+    const closeOnEscape = (event) => event.key === "Escape" && setState(null);
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.documentElement.style.overflow = previousDocumentOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+      window.scrollTo(0, previousScrollY);
+    };
+  }, [setState]);
+
+  return createPortal(
+    <div className="inventory-modal-backdrop assimilation-catalog-overlay" role="presentation" onClick={() => setState(null)}>
+      <section className="inventory-item-modal inventory-catalog-modal assimilation-catalog-modal" role="dialog" aria-modal="true" aria-labelledby="assimilation-catalog-title" onClick={(event) => event.stopPropagation()}>
+        <header className="inventory-item-modal-head assimilation-catalog-modal__header">
+          <div><span className="eyebrow">FICHA · ASSIMILAÇÕES</span><h3 id="assimilation-catalog-title">Adicionar assimilação</h3></div>
+          <button type="button" className="inventory-modal-close" onClick={() => setState(null)} aria-label="Fechar catálogo"><X size={17} /></button>
+        </header>
+        <div className="inventory-catalog-toolbar assimilation-catalog-modal__controls">
+          <label className="inventory-catalog-search"><span>Buscar assimilação</span><input autoFocus type="search" value={state.search} onChange={(event) => setState((current) => ({ ...current, search: event.target.value }))} placeholder="Nome, descrição ou habilidade" /></label>
+          <div className="inventory-catalog-filters assimilation-family-filters" aria-label="Filtrar por família">
+            <button type="button" className={state.family === "all" ? "is-active" : ""} onClick={() => setState((current) => ({ ...current, family: "all" }))}>Todas</button>
+            {assimilationFamilies.map((family) => <button type="button" key={family} className={state.family === family ? "is-active" : ""} onClick={() => setState((current) => ({ ...current, family }))}>{assimilationFamilyLabels[family]}</button>)}
+          </div>
+          <label className="assimilation-level-filter"><span>Nível</span><select value={state.level} onChange={(event) => setState((current) => ({ ...current, level: event.target.value }))}><option value="all">Todos</option>{Array.from(new Set(officialAssimilations.map((item) => item.level))).sort((a, b) => a - b).map((level) => <option value={level} key={level}>{level}</option>)}</select></label>
+        </div>
+        <div className="inventory-catalog-grid assimilation-catalog-modal__list" aria-live="polite">
+          {visibleAssimilations.length ? visibleAssimilations.map((item) => {
+            const acquired = acquiredIds.has(item.id);
+            return <button key={item.id} type="button" className={`assimilation-catalog-card ${state.selectedId === item.id ? "is-selected" : ""} ${acquired ? "is-acquired" : ""}`} onClick={() => setState((current) => ({ ...current, selectedId: item.id }))}>
+              <span className="assimilation-card__name">{item.name}</span>
+              <strong>{assimilationFamilyShortLabels[item.family]} · NÍVEL {item.level}</strong>
+              <span className="assimilation-card__family">{assimilationFamilyLabels[item.family]} · Grau {item.rank}</span>
+              <p>{item.description}</p>
+              {acquired && <em>JÁ ADICIONADA</em>}
+            </button>;
+          }) : <p className="inventory-catalog-empty">Nenhuma assimilação encontrada.</p>}
+        </div>
+        <footer className="inventory-catalog-footer assimilation-catalog-modal__footer">
+          <div className="assimilation-catalog-selection">
+            {selectedItem ? <><strong>{selectedItem.name}</strong><span>{assimilationFamilyLabels[selectedItem.family]} · Nível {selectedItem.level} · Grau {selectedItem.rank}</span><p>{selectedItem.description}</p><div className="assimilation-ability-preview">{selectedItem.abilities.map((ability) => <span key={ability.id}><b>{ability.name}</b>{ability.costText ? ` · ${ability.costText}` : ""}</span>)}</div></> : <span>Selecione um card para consultar os detalhes.</span>}
+          </div>
+          <div className="inventory-modal-actions assimilation-catalog-actions"><button type="button" className="inventory-cancel-btn" onClick={() => setState(null)}>Cancelar</button><button type="button" className="inventory-save-btn" disabled={!selectedItem || selectedAcquired} onClick={() => onAdd(selectedItem.id)}>{selectedAcquired ? "JÁ ADICIONADA" : "ADICIONAR À FICHA"}</button></div>
+        </footer>
+      </section>
+    </div>,
+    document.body,
+  );
 }
 
 function AssimilationSymbol({ type, size = "md", className = "" }) {
@@ -2032,6 +2093,7 @@ function CharacterDetailModal({ detail, onClose }) {
         <button type="button" className="detail-modal-close" onClick={onClose} aria-label="Fechar descrição"><X size={18} /></button>
       </div>
       <p className="detail-modal-description">{detail.description}</p>
+      {detail.abilities?.length > 0 && <div className="detail-modal-abilities"><h3>Habilidades</h3>{detail.abilities.map((ability) => <div className="detail-modal-ability" key={ability.id || ability.name}><strong>{ability.name}</strong>{ability.costText && <small>{ability.costText}</small>}<p>{ability.description}</p></div>)}</div>}
       <div className="detail-modal-meta"><span>{detail.label}</span><strong>{detail.meta}</strong></div>
     </section>
   </div>;

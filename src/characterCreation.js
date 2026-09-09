@@ -157,6 +157,7 @@ export function buildCharacterDataFromDraft(draft) {
     maxHealth: health,
     healthByLevel: { healthy: health, wounded: health, laceration: health, injuries: health, debilitated: health, incapacitated: health },
     characterCharacteristics: selected.map((characteristicId) => ({ characteristicId, choices: draft.characteristics.choices[characteristicId] || {} })),
+    characterAssimilations: [],
     initialEquipmentIds: getSelectedEquipmentIds(draft),
     startingEquipmentPackage: draft.equipment.packageId,
     creationCompleted: true,
