@@ -121,7 +121,7 @@ function normalizeStore(store) {
     return {
       ...campaign,
       masterUserId,
-      characterCreationSettings: { startingDeterminationLevel: 9, allowExtraStartingEquipment: false, startingScarcityCap: 0, ...(campaign.characterCreationSettings || {}) },
+      characterCreationSettings: { startingDeterminationLevel: 10, allowExtraStartingEquipment: false, startingScarcityCap: 0, ...(campaign.characterCreationSettings || {}) },
       joinCode,
       updatedAt: campaign.updatedAt || campaign.createdAt || new Date().toISOString(),
     };
@@ -245,7 +245,7 @@ export function createCampaign(store, { name, user } = {}) {
   const joinCode = generateCampaignJoinCode(store.campaigns.map((campaign) => campaign.joinCode));
   const next = {
     ...store,
-    campaigns: [...store.campaigns, { id: campaignId, name: trimmedName, joinCode, masterUserId: user.id, characterCreationSettings: { startingDeterminationLevel: 9, allowExtraStartingEquipment: false, startingScarcityCap: 0 }, createdAt: now, updatedAt: now }],
+    campaigns: [...store.campaigns, { id: campaignId, name: trimmedName, joinCode, masterUserId: user.id, characterCreationSettings: { startingDeterminationLevel: 10, allowExtraStartingEquipment: false, startingScarcityCap: 0 }, createdAt: now, updatedAt: now }],
     memberships: [...store.memberships, { id: createId("membership"), campaignId, userId: user.id, role: "master", joinedAt: now }],
     users: store.users.some((entry) => entry.id === user.id) ? store.users : [...store.users, user],
   };

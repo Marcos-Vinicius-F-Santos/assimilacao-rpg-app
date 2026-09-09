@@ -36,8 +36,8 @@ export const startingEquipmentPackages = [
 
 const valuesFor = (names, value) => Object.fromEntries(names.map((name) => [name, value]));
 
-export function createCharacterCreationDraft({ campaignId = null, startingDeterminationLevel = 9 } = {}) {
-  const determinationLevel = Math.min(9, Math.max(1, Number(startingDeterminationLevel) || 9));
+export function createCharacterCreationDraft({ campaignId = null, startingDeterminationLevel = 10 } = {}) {
+  const determinationLevel = Math.min(10, Math.max(1, Number(startingDeterminationLevel) || 10));
   return {
     campaignId,
     identity: { name: "", concept: "" },
@@ -67,8 +67,8 @@ export function getCreationHealth(draft) {
 }
 
 export function getStartingTug(draft, campaignSettings = {}) {
-  const configured = Number(draft?.tug?.determinationLevel || campaignSettings.startingDeterminationLevel || 9);
-  const baseDetermination = Math.max(1, Math.min(9, configured));
+  const configured = Number(draft?.tug?.determinationLevel ?? campaignSettings.startingDeterminationLevel ?? 10);
+  const baseDetermination = Math.max(1, Math.min(10, Number.isFinite(configured) ? configured : 10));
   const advanced = (draft?.characteristics?.selected || []).includes("estagio-avancado");
   const determinationLevel = Math.max(1, baseDetermination - (advanced ? 1 : 0));
   return { determinationLevel, assimilationLevel: 10 - determinationLevel };
@@ -141,7 +141,8 @@ export function buildCharacterDataFromDraft(draft) {
   const health = getCreationHealth(draft);
   const selected = draft?.characteristics?.selected || [];
   const initialAssimilation = draft?.initialAssimilation || createInitialAssimilationDraft(tug.assimilationLevel);
-  const initialTest = initialAssimilation.test?.result ? { ...initialAssimilation.test, result: { ...initialAssimilation.test.result } } : null;
+  const isZeroAssimilation = tug.assimilationLevel === 0;
+  const initialTest = !isZeroAssimilation && initialAssimilation.test?.result ? { ...initialAssimilation.test, result: { ...initialAssimilation.test.result } } : null;
   return {
     name: draft.identity.name.trim(),
     concept: draft.identity.concept.trim(),
@@ -163,7 +164,7 @@ export function buildCharacterDataFromDraft(draft) {
     maxHealth: health,
     healthByLevel: { healthy: health, wounded: health, laceration: health, injuries: health, debilitated: health, incapacitated: health },
     characterCharacteristics: selected.map((characteristicId) => ({ characteristicId, choices: draft.characteristics.choices[characteristicId] || {} })),
-    characterAssimilations: groupAssimilationAcquisitions(initialAssimilation.acquisitions || []),
+    characterAssimilations: isZeroAssimilation ? [] : groupAssimilationAcquisitions(initialAssimilation.acquisitions || []),
     initialAssimilationTest: initialTest,
     initialEquipmentIds: getSelectedEquipmentIds(draft),
     startingEquipmentPackage: draft.equipment.packageId,

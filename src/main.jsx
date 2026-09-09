@@ -178,8 +178,8 @@ const defaultHealthLevels = [
 ];
 
 const TUG_TOTAL_LEVEL = 10;
-const TUG_MIN_LEVEL = 1;
-const TUG_MAX_LEVEL = 9;
+const TUG_MIN_LEVEL = 0;
+const TUG_MAX_LEVEL = 10;
 const homebrewQualityLabels = ["Quebrado", "Defeituoso", "Comprometido", "Padrão", "Reforçado", "Superior", "Obra-Prima"];
 
 function clampInteger(value, min, max, fallback) {
@@ -213,10 +213,10 @@ function sanitizeTugOfWarState(character) {
     ? safeCharacter.maxAssimilation
     : legacyAssimilation.level;
   const determinationLevel = clampInteger(
-    determinationLevelSource ?? (Number.isFinite(Number(assimilationLevelSource)) ? TUG_TOTAL_LEVEL - Number(assimilationLevelSource) : 5),
+    determinationLevelSource ?? (Number.isFinite(Number(assimilationLevelSource)) ? TUG_TOTAL_LEVEL - Number(assimilationLevelSource) : TUG_TOTAL_LEVEL),
     TUG_MIN_LEVEL,
     TUG_MAX_LEVEL,
-    5,
+    TUG_TOTAL_LEVEL,
   );
   const assimilationLevel = TUG_TOTAL_LEVEL - determinationLevel;
   return {
@@ -837,7 +837,7 @@ function InitialAssimilationResultSummary({ result, budget }) {
   return <div className="initial-assimilation-result-summary"><strong>Resultado do Teste de Assimilação</strong><div>{values.map(([type, total, label]) => <span key={type}><AssimilationSymbol type={type} size="sm" /><b>{label}: {total}</b><small>Restante: {budget?.[type] ?? total}</small></span>)}</div></div>;
 }
 
-function InitialAssimilationMutationList({ cardDraw, result, assimilationLevel, acquisitions, onAcquire, onRemove }) {
+function InitialAssimilationMutationList({ cardDraw, result, assimilationLevel, acquisitions, onAcquire, onRemove, onOpenDetail }) {
   const budget = getAssimilationBudget(result, acquisitions);
   const acquiredIds = new Set(acquisitions.map((item) => item.mutationId));
   const mutations = getAvailableMutations(cardDraw);
@@ -845,7 +845,7 @@ function InitialAssimilationMutationList({ cardDraw, result, assimilationLevel, 
   return <div className="initial-assimilation-mutation-list">{mutations.map((mutation) => {
     const acquired = acquiredIds.has(mutation.mutationId);
     const eligibility = canAcquireMutation(mutation, budget, assimilationLevel, acquisitions);
-    return <article className={`initial-assimilation-mutation ${acquired ? "is-acquired" : ""}`} key={mutation.mutationId}><div><strong>{mutation.name}</strong><span>{mutation.assimilationName} · {formatAssimilationAcquisitionCost(mutation.acquisitionCost)}</span>{mutation.assimilationLevelRequirement && <small>Requer Assimilação {mutation.assimilationLevelRequirement}+</small>}</div>{acquired ? <button type="button" className="initial-assimilation-remove" onClick={() => onRemove(mutation.mutationId)}>Remover</button> : <button type="button" className="initial-assimilation-acquire" disabled={!eligibility.ok} onClick={() => onAcquire(mutation)}>{eligibility.reason || "Adquirir"}</button>}</article>;
+    return <article className={`initial-assimilation-mutation ${acquired ? "is-acquired" : ""}`} key={mutation.mutationId}><button type="button" className="initial-assimilation-mutation-copy" onClick={() => onOpenDetail(initialAssimilationMutationDetail(mutation))}><strong>{mutation.name}</strong><span>{mutation.assimilationName} · {formatAssimilationAcquisitionCost(mutation.acquisitionCost)}</span>{mutation.assimilationLevelRequirement && <small>Requer Assimilação {mutation.assimilationLevelRequirement}+</small>}</button>{acquired ? <button type="button" className="initial-assimilation-remove" onClick={(event) => { event.stopPropagation(); onRemove(mutation.mutationId); }}>Remover</button> : <button type="button" className="initial-assimilation-acquire" disabled={!eligibility.ok} onClick={(event) => { event.stopPropagation(); onAcquire(mutation); }}>{eligibility.reason || "Adquirir"}</button>}</article>;
   })}</div>;
 }
 
@@ -860,11 +860,12 @@ function CreationStepTitle({ number, label, children }) {
 function CharacterCreationPage({ store, setStore, user, campaign = null, mode = "personal", onCancel, onComplete }) {
   const storageKey = `assimilation-character-creation:${user.id}:${campaign?.id || "personal"}`;
   const [draft, setDraft] = useState(() => {
-    try { const saved = window.localStorage.getItem(storageKey); return saved ? JSON.parse(saved) : createCharacterCreationDraft({ campaignId: campaign?.id || null, startingDeterminationLevel: campaign?.characterCreationSettings?.startingDeterminationLevel || 9 }); } catch { return createCharacterCreationDraft({ campaignId: campaign?.id || null, startingDeterminationLevel: campaign?.characterCreationSettings?.startingDeterminationLevel || 9 }); }
+    try { const saved = window.localStorage.getItem(storageKey); return saved ? JSON.parse(saved) : createCharacterCreationDraft({ campaignId: campaign?.id || null, startingDeterminationLevel: campaign?.characterCreationSettings?.startingDeterminationLevel ?? 10 }); } catch { return createCharacterCreationDraft({ campaignId: campaign?.id || null, startingDeterminationLevel: campaign?.characterCreationSettings?.startingDeterminationLevel ?? 10 }); }
   });
   const [stepIndex, setStepIndex] = useState(0);
   const [errors, setErrors] = useState([]);
   const [expandedCharacteristicIds, setExpandedCharacteristicIds] = useState(() => new Set());
+  const [initialMutationDetail, setInitialMutationDetail] = useState(null);
   useEffect(() => { try { window.localStorage.setItem(storageKey, JSON.stringify(draft)); } catch { /* rascunho opcional */ } }, [draft, storageKey]);
   const step = creationSteps[stepIndex];
   const aptitudes = getDraftAptitudes(draft);
@@ -889,14 +890,25 @@ function CharacterCreationPage({ store, setStore, user, campaign = null, mode = 
     if (Number(initialAssimilation.level) === Number(tug.assimilationLevel)) return;
     setDraft((current) => ({ ...current, initialAssimilation: createInitialAssimilationDraft(getStartingTug(current, campaign?.characterCreationSettings || {}).assimilationLevel) }));
   }, [tug.assimilationLevel]);
+  useEffect(() => {
+    if (!initialMutationDetail) return undefined;
+    const closeOnEscape = (event) => event.key === "Escape" && setInitialMutationDetail(null);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [initialMutationDetail]);
   const updateInitialAssimilation = (updater) => setDraft((current) => ({ ...current, initialAssimilation: updater(current.initialAssimilation || createInitialAssimilationDraft(tug.assimilationLevel)) }));
   const resetInitialAssimilation = (level) => createInitialAssimilationDraft(level);
   const setStartingDeterminationLevel = (value) => {
-    const determinationLevel = Math.max(1, Math.min(9, Number(value) || 9));
+    const determinationLevel = Math.max(1, Math.min(10, Number(value) || 10));
     const nextDraft = { ...draft, tug: { ...draft.tug, determinationLevel, assimilationLevel: 10 - determinationLevel } };
     const nextTug = getStartingTug(nextDraft, campaign?.characterCreationSettings || {});
     const previousLevel = draft.initialAssimilation?.level;
-    if (draft.initialAssimilation?.test?.result && previousLevel !== undefined && Number(previousLevel) !== Number(nextTug.assimilationLevel) && !window.confirm("Alterar o Nível de Assimilação invalidará o Teste de Assimilação e as mutações selecionadas.")) return;
+    if (draft.initialAssimilation?.test?.result && previousLevel !== undefined && Number(previousLevel) !== Number(nextTug.assimilationLevel)) {
+      const message = nextTug.assimilationLevel === 0
+        ? "Reduzir a Assimilação inicial para 0 removerá o Teste de Assimilação e todas as mutações selecionadas durante a criação."
+        : "Alterar o Nível de Assimilação invalidará o Teste de Assimilação e as mutações selecionadas.";
+      if (!window.confirm(message)) return;
+    }
     setDraft((current) => previousLevel !== undefined && Number(previousLevel) !== Number(nextTug.assimilationLevel)
       ? { ...nextDraft, initialAssimilation: resetInitialAssimilation(nextTug.assimilationLevel) }
       : nextDraft);
@@ -965,14 +977,20 @@ function CharacterCreationPage({ store, setStore, user, campaign = null, mode = 
     const selected = selectedCharacteristics.includes(item.id);
     if (!selected && (!evaluateCharacteristicRequirement(item.requirements, aptitudes, tug.assimilationLevel) || characteristicsCost + item.cost + aptitudeXpCost > 7)) return;
     const nextSelected = selected ? selectedCharacteristics.filter((id) => id !== item.id) : [...selectedCharacteristics, item.id];
-    const nextLevel = item.id === "estagio-avancado" ? (selected ? Math.min(9, tug.determinationLevel + 1) : Math.max(1, tug.determinationLevel - 1)) : tug.assimilationLevel;
-    if (draft.initialAssimilation?.test?.result && Number(nextLevel) !== Number(tug.assimilationLevel) && !window.confirm("Alterar o Nível de Assimilação invalidará o Teste de Assimilação e as mutações selecionadas.")) return;
+    const nextDraft = { ...draft, characteristics: { ...draft.characteristics, selected: nextSelected } };
+    const resolvedLevel = getStartingTug(nextDraft, campaign?.characterCreationSettings || {}).assimilationLevel;
+    if (draft.initialAssimilation?.test?.result && Number(resolvedLevel) !== Number(tug.assimilationLevel)) {
+      const message = resolvedLevel === 0
+        ? "Reduzir a Assimilação inicial para 0 removerá o Teste de Assimilação e todas as mutações selecionadas durante a criação."
+        : "Alterar o Nível de Assimilação invalidará o Teste de Assimilação e as mutações selecionadas.";
+      if (!window.confirm(message)) return;
+    }
     setDraft((current) => {
-      const nextDraft = { ...current, characteristics: { ...current.characteristics, selected: nextSelected } };
-      const resolvedLevel = getStartingTug(nextDraft, campaign?.characterCreationSettings || {}).assimilationLevel;
-      return Number(current.initialAssimilation?.level) !== Number(resolvedLevel)
-        ? { ...nextDraft, initialAssimilation: resetInitialAssimilation(resolvedLevel) }
-        : nextDraft;
+      const updatedDraft = { ...current, characteristics: { ...current.characteristics, selected: nextSelected } };
+      const updatedLevel = getStartingTug(updatedDraft, campaign?.characterCreationSettings || {}).assimilationLevel;
+      return Number(current.initialAssimilation?.level) !== Number(updatedLevel)
+        ? { ...updatedDraft, initialAssimilation: resetInitialAssimilation(updatedLevel) }
+        : updatedDraft;
     });
   };
   const updatePurpose = (kind, index, value) => updateNested("purposes", { [kind]: draft.purposes[kind].map((item, itemIndex) => itemIndex === index ? value : item) });
@@ -985,11 +1003,12 @@ function CharacterCreationPage({ store, setStore, user, campaign = null, mode = 
     const cardsReady = isZeroResult || validateAssimilationCards(cardDraw, result).length === 0;
     const isMaster = mode === "campaign" && getCampaignRole(store, user.id, campaign.id) === "master";
     const cardFamilies = [["evolutive", "Cartas Evolutivas", "Sucessos"], ["adaptive", "Cartas Adaptativas", "Adaptações"], ["inopportune", "Cartas Inoportunas", "Falhas"]];
+    if (tug.assimilationLevel === 0) return <div className="initial-assimilation-flow"><section className="initial-assimilation-panel initial-assimilation-panel--tug"><div className="initial-assimilation-panel-head"><div><span>6.1 · Assimilação Inicial</span><h3>Nível de Assimilação: 0</h3></div><strong>{tug.determinationLevel} / {tug.assimilationLevel}</strong></div><p>Nenhum Teste de Assimilação é necessário enquanto o personagem começar com Assimilação 0.</p></section></div>;
     return <div className="initial-assimilation-flow">
-      <section className="initial-assimilation-panel initial-assimilation-panel--tug"><div className="initial-assimilation-panel-head"><div><span>6.1 · Definir Cabo de Guerra</span><h3>Determinação + Assimilação = 10</h3></div><strong>{tug.determinationLevel} / {tug.assimilationLevel}</strong></div><label className="creation-field">Nível inicial de Determinação<select value={tug.determinationLevel} onChange={(event) => setStartingDeterminationLevel(selectedCharacteristics.includes("estagio-avancado") ? Number(event.target.value) + 1 : event.target.value)}>{Array.from({ length: selectedCharacteristics.includes("estagio-avancado") ? 8 : 9 }, (_, index) => index + 1).map((level) => <option value={level} key={level}>Determinação {level} · Assimilação {10 - level}</option>)}</select></label><p>O teste usa 1 D6 + {tug.assimilationLevel} D12. O nível de Assimilação nunca é 0.</p>{selectedCharacteristics.includes("estagio-avancado") && <small>Estágio Avançado aplicado: o nível inicial foi recalculado.</small>}</section>
+      <section className="initial-assimilation-panel initial-assimilation-panel--tug"><div className="initial-assimilation-panel-head"><div><span>6.1 · Definir Cabo de Guerra</span><h3>Determinação + Assimilação = 10</h3></div><strong>{tug.determinationLevel} / {tug.assimilationLevel}</strong></div><label className="creation-field">Nível inicial de Determinação<select value={tug.determinationLevel} onChange={(event) => setStartingDeterminationLevel(selectedCharacteristics.includes("estagio-avancado") ? Number(event.target.value) + 1 : event.target.value)}>{Array.from({ length: selectedCharacteristics.includes("estagio-avancado") ? 9 : 10 }, (_, index) => index + 1).map((level) => <option value={level} key={level}>Determinação {level} · Assimilação {10 - level}</option>)}</select></label><p>O teste usa 1 D6 + {tug.assimilationLevel} D12.</p>{selectedCharacteristics.includes("estagio-avancado") && <small>Estágio Avançado aplicado: o nível inicial foi recalculado.</small>}</section>
       <section className="initial-assimilation-panel"><div className="initial-assimilation-panel-head"><div><span>6.2 · Resolver Assimilação Inicial</span><h3>Teste de Assimilação</h3></div><strong>{getInitialDiceLabel(tug.assimilationLevel)}</strong></div>{!test.result ? <div className="initial-assimilation-choice"><p>Como deseja realizar o Teste de Assimilação?</p><div><button type="button" className="campaign-primary-btn" onClick={rollInitialAssimilation}>Rolar digitalmente</button><button type="button" className="campaign-secondary-btn" onClick={chooseManualInitialAssimilation}>Inserir resultado manual</button></div></div> : <><div className="initial-assimilation-dice-grid">{(test.dice || []).map((die) => <InitialAssimilationDieCard key={die.id} die={die} />)}</div>{test.source === "manual" && !test.confirmed && <div className="initial-assimilation-manual-grid">{[["success", "Sucessos"], ["adaptation", "Adaptações"], ["failure", "Falhas"]].map(([key, label]) => <label key={key}>{label}<input type="number" min="0" value={result[key]} onChange={(event) => updateManualInitialResult(key, event.target.value)} /></label>)}</div>}<InitialAssimilationResultSummary result={result} budget={initialBudget} />{Number(initialAssimilation.existingInopportuneFailures || 0) + result.failure >= 10 && <div className="initial-assimilation-critical" role="alert">As Falhas/Pressões acumuladas atingiram 10. Este personagem não pode concluir a criação normalmente.</div>}<div className="initial-assimilation-actions">{!test.confirmed && <button type="button" className="campaign-primary-btn" onClick={confirmInitialAssimilationTest}>Confirmar resultado</button>}<button type="button" className="campaign-secondary-btn" onClick={resetInitialAssimilationWithConfirmation}>{test.confirmed ? "Refazer teste" : "Rolar novamente"}</button></div></>}</section>
       {test.confirmed && <section className="initial-assimilation-panel"><div className="initial-assimilation-panel-head"><div><span>6.3 · Cartas</span><h3>Como deseja realizar o sorteio das cartas?</h3></div><strong>{isZeroResult ? "Nenhuma carta" : ""}</strong></div>{isZeroResult ? <p className="initial-assimilation-empty">O teste não gerou símbolos úteis. Nenhuma mutação será adquirida.</p> : <><div className="initial-assimilation-choice"><button type="button" className={`campaign-secondary-btn ${cardDraw.source === "physical" ? "is-selected" : ""}`} onClick={() => chooseInitialCardSource("physical")}>Baralho físico</button><button type="button" className={`campaign-primary-btn ${cardDraw.source === "digital" ? "is-selected" : ""}`} onClick={() => chooseInitialCardSource("digital")}>Sorteio digital</button></div>{cardDraw.source === "physical" && cardFamilies.map(([family, title, symbolLabel]) => { const selectedCards = cardDraw[family] || []; const options = officialAssimilations.filter((item) => item.family === family); return <div className="initial-assimilation-card-picker" key={family}><div><h4>{title}</h4><span>Selecione {initialCardCounts[family]} · {selectedCards.length}/{initialCardCounts[family]} {symbolLabel}</span></div><div>{options.map((item) => <button type="button" key={item.id} className={selectedCards.some((card) => card.id === item.id) ? "is-selected" : ""} onClick={() => togglePhysicalInitialCard(family, item)}><strong>{item.name}</strong><small>{item.description}</small></button>)}</div></div>; })}{cardDraw.source === "digital" && <div className="initial-assimilation-drawn-cards">{cardFamilies.map(([family, title]) => <div key={family}><h4>{title}</h4><div>{(cardDraw[family] || []).map((item) => <span key={item.id}>{item.name}</span>)}</div></div>)}</div>}</>}</section>}
-      {test.confirmed && !isZeroResult && cardDraw.source && cardDraw.source !== "none" && <section className="initial-assimilation-panel"><div className="initial-assimilation-panel-head"><div><span>6.4 · Mutações</span><h3>Adquirir mutações</h3></div><strong>{cardsReady ? "Escolha livre" : "Cartas pendentes"}</strong></div>{!cardsReady ? <p className="initial-assimilation-empty">Selecione todas as cartas correspondentes ao resultado para liberar as mutações.</p> : <><InitialAssimilationResultSummary result={result} budget={initialBudget} /><InitialAssimilationMutationList cardDraw={cardDraw} result={result} assimilationLevel={tug.assimilationLevel} acquisitions={initialAssimilation.acquisitions || []} onAcquire={acquireInitialMutation} onRemove={removeInitialMutation} /></>}</section>}
+      {test.confirmed && !isZeroResult && cardDraw.source && cardDraw.source !== "none" && <section className="initial-assimilation-panel"><div className="initial-assimilation-panel-head"><div><span>6.4 · Mutações</span><h3>Adquirir mutações</h3></div><strong>{cardsReady ? "Escolha livre" : "Cartas pendentes"}</strong></div>{!cardsReady ? <p className="initial-assimilation-empty">Selecione todas as cartas correspondentes ao resultado para liberar as mutações.</p> : <><InitialAssimilationResultSummary result={result} budget={initialBudget} /><InitialAssimilationMutationList cardDraw={cardDraw} result={result} assimilationLevel={tug.assimilationLevel} acquisitions={initialAssimilation.acquisitions || []} onAcquire={acquireInitialMutation} onRemove={removeInitialMutation} onOpenDetail={setInitialMutationDetail} /></>}</section>}
       {test.confirmed && isMaster && <section className="initial-assimilation-panel initial-assimilation-panel--singular"><div className="initial-assimilation-panel-head"><div><span>Opções do Mestre</span><h3>Assimilações Singulares</h3></div></div><p>Inclua cartas Singulares autorizadas pelo Mestre. Elas não são geradas automaticamente pelos símbolos.</p><div className="initial-assimilation-singular-options">{officialAssimilations.filter((item) => item.family === "singular").map((item) => <button type="button" key={item.id} className={(cardDraw.singular || []).some((card) => card.id === item.id) ? "is-selected" : ""} onClick={() => toggleSingularInitialCard(item)}>{item.name}</button>)}</div></section>}
       {test.confirmed && !isMaster && <p className="initial-assimilation-note">Assimilações Singulares podem ser adicionadas pelo Mestre conforme o ambiente da campanha.</p>}
     </div>;
@@ -1004,9 +1023,9 @@ function CharacterCreationPage({ store, setStore, user, campaign = null, mode = 
     if (step.id === "health") return <div className="creation-summary-panel"><span>Saúde por nível</span><strong>1 + Potência {aptitudes.Potência} + Resolução {aptitudes.Resolução} = {health}</strong><p>Os seis níveis recebem automaticamente esta capacidade. Nenhuma gota precisa ser preenchida manualmente.</p><div className="creation-health-list">{defaultHealthLevels.map((level) => <span key={level.label}>{level.label}<b>{health}</b></span>)}</div></div>;
     if (step.id === "characteristics") return <><div className="creation-budget-row"><span>XP inicial: <b>7</b></span><span>Gasto: <b>{characteristicsCost + aptitudeXpCost}</b></span><span>Restante: <b className={xpRemaining < 0 ? "is-error" : ""}>{xpRemaining}</b></span></div><div className="creation-characteristic-grid">{characteristicCatalog.map((item) => { const selected = selectedCharacteristics.includes(item.id); const eligible = evaluateCharacteristicRequirement(item.requirements, aptitudes, tug.assimilationLevel); const canInteract = selected || (eligible && characteristicsCost + item.cost + aptitudeXpCost <= 7); const expanded = expandedCharacteristicIds.has(item.id); return <article className={`creation-characteristic ${selected ? "is-selected" : ""} ${!eligible ? "is-ineligible" : ""}`} key={item.id} role="button" tabIndex={canInteract ? 0 : -1} aria-disabled={!canInteract} onClick={() => canInteract && toggleCharacteristic(item)} onKeyDown={(event) => { if ((event.key === "Enter" || event.key === " ") && canInteract) { event.preventDefault(); toggleCharacteristic(item); } }}><div className="creation-characteristic-selection"><strong>{item.name}</strong><span>{item.cost} XP · {formatCharacteristicRequirement(item.requirements)}</span></div><ExpandableCharacteristicDescription id={`creation-${item.id}`} text={item.description} expanded={expanded} onToggle={() => toggleExpandedId(setExpandedCharacteristicIds, item.id)} className="creation-characteristic-description" />{selected && <em>Selecionada</em>}</article>; })}</div>{selectedCharacteristics.includes("sentido-agucado") && <label className="creation-field">Escolha para Sentido Aguçado<select value={draft.characteristics.choices.sense || ""} onChange={(event) => updateNested("characteristics", { choices: { ...draft.characteristics.choices, sense: event.target.value } })}><option value="">Escolha um sentido</option>{["Visão", "Audição", "Tato", "Paladar", "Olfato"].map((sense) => <option key={sense}>{sense}</option>)}</select></label>}<div className="creation-upgrades"><h3>XP em Conhecimentos e Práticas</h3><p>O próximo nível custa 2 × o nível desejado. Instintos não usam este XP.</p>{[...creationKnowledgeNames, ...creationPracticeNames].map((name) => { const group = creationKnowledgeNames.includes(name) ? "knowledge" : "practices"; const value = Number(draft.baseAptitudes[group][name]) + Number(draft.xpUpgrades[group][name]); const nextCost = 2 * (value + 1); return <div className="creation-upgrade-row" key={name}><span>{name} <b>{value}</b></span><button type="button" disabled={!draft.xpUpgrades[group][name]} onClick={() => updateUpgrade(group, name, -1)}>−</button><small>{nextCost} XP</small><button type="button" disabled={xpRemaining < nextCost} onClick={() => updateUpgrade(group, name, 1)}>+</button></div>; })}</div></>;
     if (step.id === "equipment") return <><div className="creation-option-grid creation-package-grid">{startingEquipmentPackages.map((pack) => <button type="button" key={pack.id} className={`creation-option ${draft.equipment.packageId === pack.id ? "is-selected" : ""}`} onClick={() => updateNested("equipment", { packageId: pack.id, choiceIds: [] })}><strong>{pack.name}</strong><span>{pack.itemIds.map((id) => itemCatalogById[id]?.name).filter(Boolean).join(" · ")}</span></button>)}</div>{selectedPack?.choice && <fieldset className="creation-choice-fieldset"><legend>Escolha {selectedPack.choice.count} armas para o pacote {selectedPack.name}</legend>{selectedPack.choice.options.map((itemId) => <label key={itemId}><input type="checkbox" checked={draft.equipment.choiceIds.includes(itemId)} disabled={!draft.equipment.choiceIds.includes(itemId) && draft.equipment.choiceIds.length >= selectedPack.choice.count} onChange={() => updateNested("equipment", { choiceIds: draft.equipment.choiceIds.includes(itemId) ? draft.equipment.choiceIds.filter((id) => id !== itemId) : [...draft.equipment.choiceIds, itemId] })} />{itemCatalogById[itemId]?.name}</label>)}</fieldset>}</>;
-    return <div className="creation-review"><div><b>Identidade</b><span>{draft.identity.name} · {draft.generation.id || "Geração não escolhida"}</span></div><div><b>Origens</b><span>{draft.origins.event} · {draft.origins.occupation}</span></div><div><b>Propósitos</b><span>{draft.purposes.personal.join(" · ")} · {draft.purposes.collective.join(" · ")}</span></div><div><b>Aptidões</b><span>Instintos {instinctsTotal}/9 · Conhecimentos/Práticas {baseLearnedTotal}/7</span></div><div><b>Cabo e Saúde</b><span>Determinação {tug.determinationLevel} / Assimilação {tug.assimilationLevel} · {health} pontos por nível</span></div><div><b>Teste de Assimilação</b><span>{initialAssimilation.test?.result ? `${initialTestResult.success} Sucessos · ${initialTestResult.adaptation} Adaptações · ${initialTestResult.failure} Falhas` : "Não resolvido"}</span></div><div><b>Mutações</b><span>{(initialAssimilation.acquisitions || []).length ? (initialAssimilation.acquisitions || []).map((item) => getAvailableMutations(initialAssimilation.cardDraw).find((mutation) => mutation.mutationId === item.mutationId)?.name || item.mutationId).join(" · ") : "Nenhuma adquirida"}</span></div><div><b>Características e XP</b><span>{selectedCharacteristics.length} selecionada(s) · {xpRemaining} XP restante(s)</span></div><div><b>Equipamentos</b><span>{selectedPack?.name || "Nenhum pacote"} · {getSelectedEquipmentIds(draft).length} itens</span></div></div>;
+    return <div className="creation-review"><div><b>Identidade</b><span>{draft.identity.name} · {draft.generation.id || "Geração não escolhida"}</span></div><div><b>Origens</b><span>{draft.origins.event} · {draft.origins.occupation}</span></div><div><b>Propósitos</b><span>{draft.purposes.personal.join(" · ")} · {draft.purposes.collective.join(" · ")}</span></div><div><b>Aptidões</b><span>Instintos {instinctsTotal}/9 · Conhecimentos/Práticas {baseLearnedTotal}/7</span></div><div><b>Cabo e Saúde</b><span>Determinação {tug.determinationLevel} / Assimilação {tug.assimilationLevel} · {health} pontos por nível</span></div><div><b>Teste de Assimilação</b><span>{tug.assimilationLevel === 0 ? "Nenhum Teste de Assimilação necessário." : initialAssimilation.test?.result ? `${initialTestResult.success} Sucessos · ${initialTestResult.adaptation} Adaptações · ${initialTestResult.failure} Falhas` : "Não resolvido"}</span></div><div><b>Mutações</b><span>{tug.assimilationLevel === 0 ? "Nenhuma." : (initialAssimilation.acquisitions || []).length ? (initialAssimilation.acquisitions || []).map((item) => getAvailableMutations(initialAssimilation.cardDraw).find((mutation) => mutation.mutationId === item.mutationId)?.name || item.mutationId).join(" · ") : "Nenhuma adquirida"}</span></div><div><b>Características e XP</b><span>{selectedCharacteristics.length} selecionada(s) · {xpRemaining} XP restante(s)</span></div><div><b>Equipamentos</b><span>{selectedPack?.name || "Nenhum pacote"} · {getSelectedEquipmentIds(draft).length} itens</span></div></div>;
   };
-  return <div className="creation-page"><header className="creation-header"><div><button type="button" className="campaign-back-link" onClick={onCancel}>← Cancelar</button><span className="eyebrow">{mode === "campaign" ? "PERSONAGEM DE CAMPANHA" : "BIBLIOTECA PESSOAL"}</span><h1>Criação de personagem</h1><p>{mode === "campaign" ? `Criando para ${campaign.name}.` : "Monte uma base pessoal reutilizável em campanhas."}</p></div><div className="creation-progress"><strong>{stepIndex + 1} / 9</strong><span>{step.label}</span><div><i style={{ width: `${((stepIndex + 1) / 9) * 100}%` }} /></div></div></header><main className="creation-card"><CreationStepTitle number={stepIndex + 1} label={step.label}>{step.id === "aptitudes" && <p>Os limites desta etapa valem apenas para a criação inicial.</p>}{step.id === "health" && <p>Calculada a partir de Potência e Resolução.</p>}{step.id === "characteristics" && <p>7 XP para Características ou Conhecimentos/Práticas.</p>}</CreationStepTitle><section className="creation-step-body">{renderStep()}</section>{errors.length > 0 && <div className="creation-errors" role="alert">{errors.map((error) => <span key={error}>{error}</span>)}</div>}<footer className="creation-footer"><button type="button" className="campaign-secondary-btn" onClick={stepIndex ? back : onCancel}>Voltar</button>{stepIndex === creationSteps.length - 1 ? <button type="button" className="campaign-primary-btn" onClick={finish}>Criar personagem</button> : <button type="button" className="campaign-primary-btn" onClick={next}>{stepIndex === creationSteps.length - 2 ? "Revisar personagem" : "Continuar"}</button>}</footer></main></div>;
+  return <div className="creation-page"><header className="creation-header"><div><button type="button" className="campaign-back-link" onClick={onCancel}>← Cancelar</button><span className="eyebrow">{mode === "campaign" ? "PERSONAGEM DE CAMPANHA" : "BIBLIOTECA PESSOAL"}</span><h1>Criação de personagem</h1><p>{mode === "campaign" ? `Criando para ${campaign.name}.` : "Monte uma base pessoal reutilizável em campanhas."}</p></div><div className="creation-progress"><strong>{stepIndex + 1} / 9</strong><span>{step.label}</span><div><i style={{ width: `${((stepIndex + 1) / 9) * 100}%` }} /></div></div></header><main className="creation-card"><CreationStepTitle number={stepIndex + 1} label={step.label}>{step.id === "aptitudes" && <p>Os limites desta etapa valem apenas para a criação inicial.</p>}{step.id === "health" && <p>Calculada a partir de Potência e Resolução.</p>}{step.id === "characteristics" && <p>7 XP para Características ou Conhecimentos/Práticas.</p>}</CreationStepTitle><section className="creation-step-body">{renderStep()}</section>{errors.length > 0 && <div className="creation-errors" role="alert">{errors.map((error) => <span key={error}>{error}</span>)}</div>}<footer className="creation-footer"><button type="button" className="campaign-secondary-btn" onClick={stepIndex ? back : onCancel}>Voltar</button>{stepIndex === creationSteps.length - 1 ? <button type="button" className="campaign-primary-btn" onClick={finish}>Criar personagem</button> : <button type="button" className="campaign-primary-btn" onClick={next}>{stepIndex === creationSteps.length - 2 ? "Revisar personagem" : "Continuar"}</button>}</footer></main><CharacterDetailModal detail={initialMutationDetail} onClose={() => setInitialMutationDetail(null)} /></div>;
 }
 
 function PersonalCharactersPage({ store, setStore, user, onBack, onOpenCharacter, onCreate }) {
@@ -2009,6 +2028,22 @@ function PaperNotes({ notify }) {
 
 const assimilationFamilyShortLabels = { evolutive: "EV", adaptive: "AD", inopportune: "IN", singular: "SI" };
 
+function initialAssimilationMutationDetail(mutation) {
+  const family = assimilationFamilyLabels[mutation.family] || mutation.family;
+  return {
+    category: "Mutação",
+    symbol: assimilationFamilyShortLabels[mutation.family] || "M",
+    name: mutation.name,
+    type: family,
+    description: mutation.description,
+    label: "Assimilação pai",
+    meta: mutation.assimilationName,
+    family,
+    cost: formatAssimilationAcquisitionCost(mutation.acquisitionCost),
+    requirement: mutation.assimilationLevelRequirement ? formatAssimilationLevelRequirement(mutation.assimilationLevelRequirement) : null,
+  };
+}
+
 function assimilationDetail(item, reference = null) {
   return {
     category: "Assimilação",
@@ -2246,7 +2281,7 @@ function RollResultPopup({ result, onClose, onToggleDie, onConfirm, onCancel }) 
 
 function CharacterDetailModal({ detail, onClose }) {
   if (!detail) return null;
-  return <div className="detail-modal-backdrop" role="presentation" onClick={onClose}>
+  return createPortal(<div className="detail-modal-backdrop" role="presentation" onClick={onClose}>
     <section className="detail-modal" role="dialog" aria-modal="true" aria-labelledby="detail-modal-title" onClick={(event) => event.stopPropagation()}>
       <div className="detail-modal-head">
         <div className="detail-modal-heading">
@@ -2256,10 +2291,11 @@ function CharacterDetailModal({ detail, onClose }) {
         <button type="button" className="detail-modal-close" onClick={onClose} aria-label="Fechar descrição"><X size={18} /></button>
       </div>
       <p className="detail-modal-description">{detail.description}</p>
+      {(detail.family || detail.cost || detail.requirement) && <div className="detail-modal-facts">{detail.family && <div><span>Família</span><strong>{detail.family}</strong></div>}{detail.cost && <div><span>Custo</span><strong>{detail.cost}</strong></div>}{detail.requirement && <div><span>Requisito</span><strong>{detail.requirement}</strong></div>}</div>}
       {detail.abilities?.length > 0 && <div className="detail-modal-abilities"><h3>{detail.acquiredOnly ? "Mutações adquiridas" : "Habilidades"}</h3>{detail.abilities.map((ability) => <div className="detail-modal-ability" key={ability.id || ability.name}><strong>{ability.name}</strong><small>Custo: {formatAssimilationAcquisitionCost(ability.acquisitionCost)}</small>{ability.assimilationLevelRequirement && <small>Requisito: {formatAssimilationLevelRequirement(ability.assimilationLevelRequirement)}</small>}{ability.costText && !ability.assimilationLevelRequirement && !/^Assimilação\s+\d+/i.test(ability.costText) && <small>{ability.costText}</small>}<p>{ability.description}</p></div>)}</div>}
       <div className="detail-modal-meta"><span>{detail.label}</span><strong>{detail.meta}</strong></div>
     </section>
-  </div>;
+  </div>, document.body);
 }
 
 function Inventory({ notify, campaignId, characterId, storageKey = INVENTORY_STORAGE_KEY, store, availableItems = itemCatalog, onCreateCampaignItem }) {

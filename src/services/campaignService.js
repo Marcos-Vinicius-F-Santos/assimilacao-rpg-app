@@ -14,7 +14,7 @@ function mapCampaign(row) {
     masterUserId: campaign.created_by,
     createdAt: campaign.created_at,
     updatedAt: campaign.updated_at,
-    characterCreationSettings: campaign.character_creation_settings || { startingDeterminationLevel: 9, allowExtraStartingEquipment: false, startingScarcityCap: 0 },
+    characterCreationSettings: campaign.character_creation_settings || { startingDeterminationLevel: 10, allowExtraStartingEquipment: false, startingScarcityCap: 0 },
   };
 }
 
@@ -77,6 +77,12 @@ export async function createCampaign(name) {
   const { data, error } = await client.rpc("create_campaign", { campaign_name: name.trim() });
   if (error) throw error;
   const campaign = mapCampaign(data?.[0] || data);
+  const { error: settingsError } = await client
+    .from("campaigns")
+    .update({ character_creation_settings: { startingDeterminationLevel: 10, allowExtraStartingEquipment: false, startingScarcityCap: 0 } })
+    .eq("id", campaign.id);
+  if (settingsError) throw settingsError;
+  campaign.characterCreationSettings = { startingDeterminationLevel: 10, allowExtraStartingEquipment: false, startingScarcityCap: 0 };
   return { campaign, membership: { campaignId: campaign.id, userId: campaign.masterUserId, role: "master" } };
 }
 

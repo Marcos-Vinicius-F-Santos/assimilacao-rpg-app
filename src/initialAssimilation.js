@@ -5,9 +5,9 @@ export const initialAssimilationFamilies = ["evolutive", "adaptive", "inopportun
 
 const emptyResult = () => ({ success: 0, adaptation: 0, failure: 0 });
 
-export function createInitialAssimilationDraft(level = 1) {
+export function createInitialAssimilationDraft(level = 0) {
   return {
-    level: Math.max(1, Number(level) || 1),
+    level: Math.max(0, Number(level) || 0),
     existingInopportuneFailures: 0,
     test: { source: null, dice: [], result: null, confirmed: false },
     cardDraw: { source: null, evolutive: [], adaptive: [], inopportune: [], singular: [] },
@@ -15,19 +15,19 @@ export function createInitialAssimilationDraft(level = 1) {
   };
 }
 
-export function getInitialAssimilationDice(level = 1) {
-  const normalizedLevel = Math.max(1, Number(level) || 1);
-  return ["d6", ...Array.from({ length: normalizedLevel }, () => "d12")];
+export function getInitialAssimilationDice(level = 0) {
+  const normalizedLevel = Math.max(0, Number(level) || 0);
+  return normalizedLevel === 0 ? [] : ["d6", ...Array.from({ length: normalizedLevel }, () => "d12")];
 }
 
-export function rollAssimilationTest(level = 1, { rng = Math.random } = {}) {
+export function rollAssimilationTest(level = 0, { rng = Math.random } = {}) {
   const dice = getInitialAssimilationDice(level).map((dieType, index) => rollAssimilationDie({
     dieType,
     source: "Teste de Assimilação",
     id: `initial-assimilation-${Date.now()}-${index}`,
     rng,
   }));
-  return { source: "digital", level: Math.max(1, Number(level) || 1), dice, result: summarizeSymbols(dice), confirmed: false };
+  return { source: "digital", level: Math.max(0, Number(level) || 0), dice, result: summarizeSymbols(dice), confirmed: false };
 }
 
 export function normalizeAssimilationTestResult(result) {
@@ -115,6 +115,7 @@ export function validateAssimilationCards(cardDraw, result) {
 }
 
 export function validateInitialAssimilation(state, assimilationLevel) {
+  if (Number(assimilationLevel) === 0) return [];
   const errors = [];
   const test = state?.test;
   const result = normalizeAssimilationTestResult(test?.result);
@@ -147,7 +148,7 @@ export function groupAssimilationAcquisitions(acquisitions = []) {
 }
 
 export function createManualAssimilationTest(level, result) {
-  return { source: "manual", level: Math.max(1, Number(level) || 1), dice: [], result: normalizeAssimilationTestResult(result), confirmed: false };
+  return { source: "manual", level: Math.max(0, Number(level) || 0), dice: [], result: normalizeAssimilationTestResult(result), confirmed: false };
 }
 
 export function zeroAssimilationResult(result) {
