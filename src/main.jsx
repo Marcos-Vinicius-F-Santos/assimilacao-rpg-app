@@ -769,6 +769,45 @@ function CreationCounter({ name, value, onChange, min = 0, max = 3 }) {
   return <div className="creation-counter"><span>{name}</span><button type="button" onClick={() => onChange(value - 1)} disabled={value <= min} aria-label={`Diminuir ${name}`}>−</button><strong>{value}</strong><button type="button" onClick={() => onChange(value + 1)} disabled={value >= max} aria-label={`Aumentar ${name}`}>+</button></div>;
 }
 
+function ExpandableCharacteristicDescription({ id, text, expanded, onToggle, className = "" }) {
+  const descriptionRef = useRef(null);
+  const [hasOverflow, setHasOverflow] = useState(false);
+
+  useEffect(() => {
+    const element = descriptionRef.current;
+    if (!element || !text) return undefined;
+    const measure = () => {
+      const wasExpanded = expanded;
+      if (wasExpanded) element.classList.remove("is-expanded");
+      const overflow = element.scrollHeight > element.clientHeight + 1;
+      if (wasExpanded) element.classList.add("is-expanded");
+      setHasOverflow(overflow);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(measure) : null;
+    observer?.observe(element);
+    return () => {
+      window.removeEventListener("resize", measure);
+      observer?.disconnect();
+    };
+  }, [expanded, text]);
+
+  if (!text) return null;
+  return <div className="characteristic-description-control">
+    <p id={`${id}-description`} ref={descriptionRef} className={`${className}${expanded ? " is-expanded" : ""}`}>{text}</p>
+    {hasOverflow && <button type="button" className="characteristic-expand-button" aria-expanded={expanded} aria-controls={`${id}-description`} onClick={(event) => { event.stopPropagation(); onToggle(); }}>{expanded ? "MOSTRAR MENOS" : "VER MAIS"}</button>}
+  </div>;
+}
+
+function toggleExpandedId(setter, id) {
+  setter((current) => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+}
+
 function CreationStepTitle({ number, label, children }) {
   return <div className="creation-step-title"><span>{number} / 9</span><div><small>ETAPA {number}</small><h2>{label}</h2>{children}</div></div>;
 }
@@ -780,6 +819,7 @@ function CharacterCreationPage({ store, setStore, user, campaign = null, mode = 
   });
   const [stepIndex, setStepIndex] = useState(0);
   const [errors, setErrors] = useState([]);
+  const [expandedCharacteristicIds, setExpandedCharacteristicIds] = useState(() => new Set());
   useEffect(() => { try { window.localStorage.setItem(storageKey, JSON.stringify(draft)); } catch { /* rascunho opcional */ } }, [draft, storageKey]);
   const step = creationSteps[stepIndex];
   const aptitudes = getDraftAptitudes(draft);
@@ -841,7 +881,7 @@ function CharacterCreationPage({ store, setStore, user, campaign = null, mode = 
     if (step.id === "aptitudes") return <><div className="creation-budget-row"><span>Instintos: <b>{instinctsTotal}/9</b></span><span>Conhecimentos + Práticas: <b>{baseLearnedTotal}/7</b></span></div><div className="creation-aptitudes-grid">{renderAptitudeGroup("Instintos", "instincts", creationInstinctNames, 3)}{renderAptitudeGroup("Conhecimentos", "knowledge", creationKnowledgeNames, 2)}{renderAptitudeGroup("Práticas", "practices", creationPracticeNames, 2)}</div></>;
     if (step.id === "tug") return <div className="creation-summary-panel"><span>Nível inicial da campanha</span><strong>Determinação {tug.determinationLevel} / Assimilação {tug.assimilationLevel}</strong><p>Os Pontos começam preenchidos até o respectivo nível. O padrão pessoal é 9/1.</p>{selectedCharacteristics.includes("estagio-avancado") && <small>Estágio Avançado aplicado: requer aprovação do mestre quando usado em campanha.</small>}</div>;
     if (step.id === "health") return <div className="creation-summary-panel"><span>Saúde por nível</span><strong>1 + Potência {aptitudes.Potência} + Resolução {aptitudes.Resolução} = {health}</strong><p>Os seis níveis recebem automaticamente esta capacidade. Nenhuma gota precisa ser preenchida manualmente.</p><div className="creation-health-list">{defaultHealthLevels.map((level) => <span key={level.label}>{level.label}<b>{health}</b></span>)}</div></div>;
-    if (step.id === "characteristics") return <><div className="creation-budget-row"><span>XP inicial: <b>7</b></span><span>Gasto: <b>{characteristicsCost + aptitudeXpCost}</b></span><span>Restante: <b className={xpRemaining < 0 ? "is-error" : ""}>{xpRemaining}</b></span></div><div className="creation-characteristic-grid">{characteristicCatalog.map((item) => { const selected = selectedCharacteristics.includes(item.id); const eligible = evaluateCharacteristicRequirement(item.requirements, aptitudes, tug.assimilationLevel); return <button type="button" className={`creation-characteristic ${selected ? "is-selected" : ""} ${!eligible ? "is-ineligible" : ""}`} key={item.id} disabled={!selected && (!eligible || characteristicsCost + item.cost + aptitudeXpCost > 7)} onClick={() => toggleCharacteristic(item)}><strong>{item.name}</strong><span>{item.cost} XP · {formatCharacteristicRequirement(item.requirements)}</span><p className="creation-characteristic-description">{item.description}</p>{selected && <em>Selecionada</em>}</button>; })}</div>{selectedCharacteristics.includes("sentido-agucado") && <label className="creation-field">Escolha para Sentido Aguçado<select value={draft.characteristics.choices.sense || ""} onChange={(event) => updateNested("characteristics", { choices: { ...draft.characteristics.choices, sense: event.target.value } })}><option value="">Escolha um sentido</option>{["Visão", "Audição", "Tato", "Paladar", "Olfato"].map((sense) => <option key={sense}>{sense}</option>)}</select></label>}<div className="creation-upgrades"><h3>XP em Conhecimentos e Práticas</h3><p>O próximo nível custa 2 × o nível desejado. Instintos não usam este XP.</p>{[...creationKnowledgeNames, ...creationPracticeNames].map((name) => { const group = creationKnowledgeNames.includes(name) ? "knowledge" : "practices"; const value = Number(draft.baseAptitudes[group][name]) + Number(draft.xpUpgrades[group][name]); const nextCost = 2 * (value + 1); return <div className="creation-upgrade-row" key={name}><span>{name} <b>{value}</b></span><button type="button" disabled={!draft.xpUpgrades[group][name]} onClick={() => updateUpgrade(group, name, -1)}>−</button><small>{nextCost} XP</small><button type="button" disabled={xpRemaining < nextCost} onClick={() => updateUpgrade(group, name, 1)}>+</button></div>; })}</div></>;
+    if (step.id === "characteristics") return <><div className="creation-budget-row"><span>XP inicial: <b>7</b></span><span>Gasto: <b>{characteristicsCost + aptitudeXpCost}</b></span><span>Restante: <b className={xpRemaining < 0 ? "is-error" : ""}>{xpRemaining}</b></span></div><div className="creation-characteristic-grid">{characteristicCatalog.map((item) => { const selected = selectedCharacteristics.includes(item.id); const eligible = evaluateCharacteristicRequirement(item.requirements, aptitudes, tug.assimilationLevel); const canInteract = selected || (eligible && characteristicsCost + item.cost + aptitudeXpCost <= 7); const expanded = expandedCharacteristicIds.has(item.id); return <article className={`creation-characteristic ${selected ? "is-selected" : ""} ${!eligible ? "is-ineligible" : ""}`} key={item.id} role="button" tabIndex={canInteract ? 0 : -1} aria-disabled={!canInteract} onClick={() => canInteract && toggleCharacteristic(item)} onKeyDown={(event) => { if ((event.key === "Enter" || event.key === " ") && canInteract) { event.preventDefault(); toggleCharacteristic(item); } }}><div className="creation-characteristic-selection"><strong>{item.name}</strong><span>{item.cost} XP · {formatCharacteristicRequirement(item.requirements)}</span></div><ExpandableCharacteristicDescription id={`creation-${item.id}`} text={item.description} expanded={expanded} onToggle={() => toggleExpandedId(setExpandedCharacteristicIds, item.id)} className="creation-characteristic-description" />{selected && <em>Selecionada</em>}</article>; })}</div>{selectedCharacteristics.includes("sentido-agucado") && <label className="creation-field">Escolha para Sentido Aguçado<select value={draft.characteristics.choices.sense || ""} onChange={(event) => updateNested("characteristics", { choices: { ...draft.characteristics.choices, sense: event.target.value } })}><option value="">Escolha um sentido</option>{["Visão", "Audição", "Tato", "Paladar", "Olfato"].map((sense) => <option key={sense}>{sense}</option>)}</select></label>}<div className="creation-upgrades"><h3>XP em Conhecimentos e Práticas</h3><p>O próximo nível custa 2 × o nível desejado. Instintos não usam este XP.</p>{[...creationKnowledgeNames, ...creationPracticeNames].map((name) => { const group = creationKnowledgeNames.includes(name) ? "knowledge" : "practices"; const value = Number(draft.baseAptitudes[group][name]) + Number(draft.xpUpgrades[group][name]); const nextCost = 2 * (value + 1); return <div className="creation-upgrade-row" key={name}><span>{name} <b>{value}</b></span><button type="button" disabled={!draft.xpUpgrades[group][name]} onClick={() => updateUpgrade(group, name, -1)}>−</button><small>{nextCost} XP</small><button type="button" disabled={xpRemaining < nextCost} onClick={() => updateUpgrade(group, name, 1)}>+</button></div>; })}</div></>;
     if (step.id === "equipment") return <><div className="creation-option-grid creation-package-grid">{startingEquipmentPackages.map((pack) => <button type="button" key={pack.id} className={`creation-option ${draft.equipment.packageId === pack.id ? "is-selected" : ""}`} onClick={() => updateNested("equipment", { packageId: pack.id, choiceIds: [] })}><strong>{pack.name}</strong><span>{pack.itemIds.map((id) => itemCatalogById[id]?.name).filter(Boolean).join(" · ")}</span></button>)}</div>{selectedPack?.choice && <fieldset className="creation-choice-fieldset"><legend>Escolha {selectedPack.choice.count} armas para o pacote {selectedPack.name}</legend>{selectedPack.choice.options.map((itemId) => <label key={itemId}><input type="checkbox" checked={draft.equipment.choiceIds.includes(itemId)} disabled={!draft.equipment.choiceIds.includes(itemId) && draft.equipment.choiceIds.length >= selectedPack.choice.count} onChange={() => updateNested("equipment", { choiceIds: draft.equipment.choiceIds.includes(itemId) ? draft.equipment.choiceIds.filter((id) => id !== itemId) : [...draft.equipment.choiceIds, itemId] })} />{itemCatalogById[itemId]?.name}</label>)}</fieldset>}</>;
     return <div className="creation-review"><div><b>Identidade</b><span>{draft.identity.name} · {draft.generation.id || "Geração não escolhida"}</span></div><div><b>Origens</b><span>{draft.origins.event} · {draft.origins.occupation}</span></div><div><b>Propósitos</b><span>{draft.purposes.personal.join(" · ")} · {draft.purposes.collective.join(" · ")}</span></div><div><b>Aptidões</b><span>Instintos {instinctsTotal}/9 · Conhecimentos/Práticas {baseLearnedTotal}/7</span></div><div><b>Cabo e Saúde</b><span>Determinação {tug.determinationLevel} / Assimilação {tug.assimilationLevel} · {health} pontos por nível</span></div><div><b>Características e XP</b><span>{selectedCharacteristics.length} selecionada(s) · {xpRemaining} XP restante(s)</span></div><div><b>Equipamentos</b><span>{selectedPack?.name || "Nenhum pacote"} · {getSelectedEquipmentIds(draft).length} itens</span></div></div>;
   };
@@ -989,7 +1029,7 @@ function CampaignSectionLayout({ campaign, activeSection, eyebrow, title, descri
 function CampaignCharacteristicsPage({ store, user, campaignId, onBack }) {
   const [search, setSearch] = useState("");
   const [cost, setCost] = useState("all");
-  const [expandedId, setExpandedId] = useState(null);
+  const [expandedCharacteristicIds, setExpandedCharacteristicIds] = useState(() => new Set());
   const campaign = getCampaignById(store, campaignId);
   if (!campaign || !canViewCampaignCharacteristics(store, user.id, campaignId)) return <CampaignAccessMessage title="Acesso às características negado" description="Apenas participantes da campanha podem consultar este catálogo oficial." onBack={onBack} />;
   const normalizedSearch = search.trim().toLocaleLowerCase("pt-BR");
@@ -999,7 +1039,7 @@ function CampaignCharacteristicsPage({ store, user, campaignId, onBack }) {
   });
   return <CampaignSectionLayout campaign={campaign} activeSection="characteristics" eyebrow="COMPÊNDIO DA CAMPANHA" title="Características" description="Consulta rápida das opções oficiais para criação e evolução." count={visibleCharacteristics.length} onBack={onBack}>
     <div className="reference-toolbar"><label>Buscar característica<input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nome, requisito ou descrição" /></label><label>Filtrar custo<select value={cost} onChange={(event) => setCost(event.target.value)}><option value="all">Todos os custos</option>{[1, 2, 3, 4, 5].map((value) => <option value={value} key={value}>{value} ponto{value === 1 ? "" : "s"}</option>)}</select></label></div>
-    {visibleCharacteristics.length ? <div className="reference-grid characteristic-reference-grid">{visibleCharacteristics.map((item) => { const expanded = expandedId === item.id; return <article className="reference-card characteristic-reference-card" key={item.id}><button type="button" className="reference-card-toggle" aria-expanded={expanded} onClick={() => setExpandedId(expanded ? null : item.id)}><span className="reference-card-band">{item.name}</span><span className="reference-card-meta">{item.cost} ponto{item.cost === 1 ? "" : "s"}</span><span className="reference-card-requirement"><b>Requisito:</b> {formatCharacteristicRequirement(item.requirements)}</span><span className="reference-card-summary">{item.description}</span><span className="reference-card-action">{expanded ? "Ocultar detalhes" : "Ver detalhes"}</span></button>{expanded && <div className="reference-card-expanded"><p>{item.description}</p>{item.initialCreationOnly && <span className="reference-flag">Somente na criação inicial</span>}{item.requiresMasterApproval && <span className="reference-flag">Requer aprovação do mestre</span>}{item.requiresChoice && <span className="reference-flag">Inclui escolha: {item.requiresChoice.options.join(", ")}</span>}</div>}</article>; })}</div> : <div className="campaign-empty-state"><strong>Nenhuma característica encontrada.</strong><span>Ajuste a busca ou o custo.</span></div>}
+    {visibleCharacteristics.length ? <div className="reference-grid characteristic-reference-grid">{visibleCharacteristics.map((item) => { const expanded = expandedCharacteristicIds.has(item.id); return <article className="reference-card characteristic-reference-card" key={item.id}><div className="reference-card-content"><span className="reference-card-band">{item.name}</span><span className="reference-card-meta">{item.cost} ponto{item.cost === 1 ? "" : "s"}</span><span className="reference-card-requirement"><b>Requisito:</b> {formatCharacteristicRequirement(item.requirements)}</span><ExpandableCharacteristicDescription id={`reference-${item.id}`} text={item.description} expanded={expanded} onToggle={() => toggleExpandedId(setExpandedCharacteristicIds, item.id)} className="reference-card-summary" />{item.initialCreationOnly && <span className="reference-flag">Somente na criação inicial</span>}{item.requiresMasterApproval && <span className="reference-flag">Requer aprovação do mestre</span>}{item.requiresChoice && <span className="reference-flag">Inclui escolha: {item.requiresChoice.options.join(", ")}</span>}</div></article>; })}</div> : <div className="campaign-empty-state"><strong>Nenhuma característica encontrada.</strong><span>Ajuste a busca ou o custo.</span></div>}
   </CampaignSectionLayout>;
 }
 

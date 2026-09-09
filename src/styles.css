@@ -2006,9 +2006,10 @@ select:focus-visible {
 .creation-characteristic { display: grid; align-content: start; gap: 6px; min-height: 0; height: auto; padding: 10px; border: 1px solid #c8ae88; background: #f8efdb80; color: #624b3b; text-align: left; cursor: pointer; }
 .creation-characteristic:hover, .creation-characteristic:focus-visible, .creation-characteristic.is-selected { border-color: #713b35; background: #ead9bd; outline: 0; }
 .creation-characteristic.is-ineligible { opacity: .72; cursor: not-allowed; filter: saturate(.72); }
+.creation-characteristic-selection { display: grid; gap: 6px; }
 .creation-characteristic strong { color: #713b35; font: 700 11px 'Space Grotesk'; }
 .creation-characteristic span { font-size: 10px; line-height: 1.3; }
-.creation-characteristic-description { margin: 2px 0 0; color: #624b3b; font: 500 10px/1.45 Georgia, serif; }
+.creation-characteristic-description { display: -webkit-box; margin: 2px 0 0; overflow: hidden; color: #624b3b; font: 500 10px/1.45 Georgia, serif; -webkit-box-orient: vertical; -webkit-line-clamp: 4; }
 .creation-characteristic em { color: #315e60; font: 700 8px 'Space Grotesk'; font-style: normal; text-transform: uppercase; }
 .creation-upgrades { margin-top: 23px; padding-top: 18px; border-top: 1px dashed #bea17d; }
 .creation-upgrades p { margin: 0 0 10px; color: #866e59; font-size: 11px; }
@@ -2070,13 +2071,18 @@ select:focus-visible {
 .reference-toolbar input:focus, .reference-toolbar select:focus { border-color: #713b35; box-shadow: 0 0 0 2px #713b3526; }
 .reference-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: start; }
 .reference-card { min-width: 0; border: 1px solid #b99c76; background: #f5ecd8c9; color: #5d4535; }
+.reference-card-content { display: grid; width: 100%; min-height: 218px; box-sizing: border-box; align-content: start; gap: 8px; padding: 0 14px 13px; }
 .reference-card-toggle { display: grid; width: 100%; min-height: 218px; align-content: start; gap: 8px; padding: 0 14px 13px; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
 .reference-card-toggle:hover, .reference-card-toggle:focus-visible { background: #f8efdb; outline: 0; box-shadow: inset 0 0 0 2px #8f704e; }
 .reference-card-band { display: block; margin: 0 -14px; padding: 11px 14px 10px; background: #817b55; color: #fff4df; font: 700 13px/1.2 'Space Grotesk'; letter-spacing: .02em; text-transform: uppercase; }
 .reference-card-meta { color: #713b35; font: 700 10px 'Space Grotesk'; letter-spacing: .07em; text-transform: uppercase; }
 .reference-card-requirement { color: #765c49; font: 500 11px/1.4 'DM Sans'; }
 .reference-card-requirement b { color: #5d4535; }
-.reference-card-summary { display: -webkit-box; overflow: hidden; color: #624b3b; font: 500 12px/1.45 Georgia, serif; -webkit-box-orient: vertical; -webkit-line-clamp: 7; }
+.reference-card-summary { display: -webkit-box; margin: 0; overflow: hidden; color: #624b3b; font: 500 12px/1.45 Georgia, serif; -webkit-box-orient: vertical; -webkit-line-clamp: 7; }
+.characteristic-description-control { display: grid; min-width: 0; gap: 5px; }
+.characteristic-description-control > p.is-expanded { display: block; overflow: visible; -webkit-line-clamp: unset; }
+.characteristic-expand-button { justify-self: start; padding: 0; border: 0; background: transparent; color: #315e60; font: 700 9px 'Space Grotesk'; letter-spacing: .07em; text-transform: uppercase; cursor: pointer; }
+.characteristic-expand-button:hover, .characteristic-expand-button:focus-visible { color: #713b35; outline: 0; text-decoration: underline; }
 .reference-card-action, .reference-card-ability-count, .reference-flag { margin-top: auto; color: #315e60; font: 700 9px 'Space Grotesk'; letter-spacing: .07em; text-transform: uppercase; }
 .reference-card-expanded { padding: 14px; border-top: 1px dashed #bea17d; background: #eee6d1; }
 .reference-card-expanded p { margin: 0 0 10px; color: #624b3b; font: 500 12px/1.55 Georgia, serif; }
@@ -2114,7 +2120,7 @@ select:focus-visible {
   .campaign-reference-actions { justify-content: flex-start; }
   .reference-toolbar, .reference-toolbar--assimilation { grid-template-columns: 1fr; }
   .reference-grid { grid-template-columns: 1fr; }
-  .reference-card-toggle { min-height: 0; }
+  .reference-card-toggle, .reference-card-content { min-height: 0; }
   .reference-source-notice { align-items: flex-start; flex-direction: column; gap: 4px; }
 }
 
