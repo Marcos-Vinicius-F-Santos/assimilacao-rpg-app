@@ -113,6 +113,26 @@
     border-bottom-color: #7a5040
 }
 
+.auth-forgot-link {
+    margin-top: 13px;
+    border: 0;
+    background: transparent;
+    color: #7a5040;
+    font-size: 12px;
+    text-decoration: underline;
+    text-underline-offset: 3px
+}
+
+.auth-forgot-link:hover {
+    color: #5e4637
+}
+
+.auth-card-action {
+    justify-content: center;
+    width: 100%;
+    margin-top: 8px
+}
+
 .auth-page--loading .auth-card h1 {
     font-size: 20px
 }

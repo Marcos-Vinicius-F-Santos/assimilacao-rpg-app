@@ -472,6 +472,7 @@ function normalizeInventoryItem(item, index = 0, definition = null) {
 
 function parseAppRoute(pathname = window.location.pathname) {
   const parts = pathname.split("/").filter(Boolean);
+  if (parts.length === 1 && parts[0] === "reset-password") return { type: "reset-password" };
   if (parts.length === 1 && parts[0] === "homebrew") return { type: "homebrew" };
   if (parts.length === 1 && parts[0] === "characters") return { type: "personal-characters" };
   if (parts.length === 2 && parts[0] === "characters" && parts[1] === "new") return { type: "personal-create" };
@@ -609,7 +610,10 @@ function App() {
   const auth = useAuth();
   if (auth.loading) return <AuthLoadingPage label="Restaurando sua sessão..." />;
   if (!auth.configured) return <SupabaseSetupPage />;
-  if (!auth.user) return <LoginPage signIn={auth.signIn} signUp={auth.signUp} />;
+  if (window.location.pathname === "/reset-password") {
+    return <ResetPasswordPage recoverySession={auth.recoverySession} updatePassword={auth.updatePassword} signOut={auth.signOut} />;
+  }
+  if (!auth.user) return <LoginPage signIn={auth.signIn} signUp={auth.signUp} requestPasswordReset={auth.requestPasswordReset} />;
   return <AuthenticatedApp user={auth.user} onSignOut={auth.signOut} />;
 }
 
@@ -625,13 +629,14 @@ function RemoteSetupPage({ message, onSignOut }) {
   return <main className="auth-page"><section className="auth-card"><div className="campaign-brand">∿ ASSIMILAÇÃO</div><span className="eyebrow">BANCO DE DADOS</span><h1>Não foi possível carregar suas campanhas</h1><p>{message}</p><small>Confirme se a migration da fundação foi aplicada no projeto Supabase.</small><button type="button" className="campaign-secondary-btn" onClick={onSignOut}>Sair</button></section></main>;
 }
 
-function LoginPage({ signIn, signUp }) {
+function LoginPage({ signIn, signUp, requestPasswordReset }) {
   const [mode, setMode] = useState("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [requestLoading, setRequestLoading] = useState(false);
   const submit = async (event) => {
     event.preventDefault();
     setError("");
@@ -645,7 +650,87 @@ function LoginPage({ signIn, signUp }) {
       setNotice("Conta criada. Verifique seu email para confirmar o acesso.");
     }
   };
-  return <main className="auth-page"><section className="auth-card"><div className="campaign-brand">∿ ASSIMILAÇÃO</div><span className="eyebrow">CAMPANHAS VIVAS</span><h1>{mode === "signin" ? "Entrar" : "Criar conta"}</h1><p>{mode === "signin" ? "Entre para acessar suas campanhas e fichas." : "Crie seu acesso para jogar com outras pessoas."}</p><form className="auth-form" onSubmit={submit}>{mode === "signup" && <label>Nome de exibição<input required value={displayName} onChange={(event) => setDisplayName(event.target.value)} autoComplete="name" /></label>}<label>Email<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" /></label><label>Senha<input required type="password" minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === "signin" ? "current-password" : "new-password"} /></label>{error && <p className="auth-form-error" role="alert">{error}</p>}{notice && <p className="auth-form-notice" role="status">{notice}</p>}<button type="submit" className="campaign-primary-btn">{mode === "signin" ? "Entrar" : "Criar conta"}</button></form><button type="button" className="auth-mode-toggle" onClick={() => { setMode(mode === "signin" ? "signup" : "signin"); setError(""); setNotice(""); }}>{mode === "signin" ? "Ainda não tenho conta" : "Já tenho uma conta"}</button></section></main>;
+  const requestReset = async (event) => {
+    event.preventDefault();
+    setError("");
+    setNotice("");
+    setRequestLoading(true);
+    let result;
+    try {
+      result = await requestPasswordReset(email);
+    } catch {
+      result = { error: new Error("Falha de rede") };
+    }
+    setRequestLoading(false);
+    if (result.error) {
+      setError(formatAuthError(result.error, "Não foi possível enviar o link de recuperação."));
+      return;
+    }
+    setNotice("Se existir uma conta com esse email, enviaremos um link de recuperação.");
+  };
+  if (mode === "forgot") {
+    return <main className="auth-page"><section className="auth-card"><div className="campaign-brand">∿ ASSIMILAÇÃO</div><span className="eyebrow">RECUPERAÇÃO DE ACESSO</span><h1>Esqueci minha senha</h1><p>Informe seu email para receber um link seguro de recuperação.</p><form className="auth-form" onSubmit={requestReset}><label>Email<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" /></label>{error && <p className="auth-form-error" role="alert">{error}</p>}{notice && <p className="auth-form-notice" role="status">{notice}</p>}<button type="submit" className="campaign-primary-btn" disabled={requestLoading}>{requestLoading ? "Enviando..." : "Enviar link de recuperação"}</button></form><button type="button" className="auth-mode-toggle" onClick={() => { setMode("signin"); setError(""); setNotice(""); }}>Voltar para login</button></section></main>;
+  }
+  return <main className="auth-page"><section className="auth-card"><div className="campaign-brand">∿ ASSIMILAÇÃO</div><span className="eyebrow">CAMPANHAS VIVAS</span><h1>{mode === "signin" ? "Entrar" : "Criar conta"}</h1><p>{mode === "signin" ? "Entre para acessar suas campanhas e fichas." : "Crie seu acesso para jogar com outras pessoas."}</p><form className="auth-form" onSubmit={submit}>{mode === "signup" && <label>Nome de exibição<input required value={displayName} onChange={(event) => setDisplayName(event.target.value)} autoComplete="name" /></label>}<label>Email<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" /></label><label>Senha<input required type="password" minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === "signin" ? "current-password" : "new-password"} /></label>{error && <p className="auth-form-error" role="alert">{error}</p>}{notice && <p className="auth-form-notice" role="status">{notice}</p>}<button type="submit" className="campaign-primary-btn">{mode === "signin" ? "Entrar" : "Criar conta"}</button></form>{mode === "signin" && <button type="button" className="auth-forgot-link" onClick={() => { setMode("forgot"); setError(""); setNotice(""); }}>Esqueci minha senha</button>}<button type="button" className="auth-mode-toggle" onClick={() => { setMode(mode === "signin" ? "signup" : "signin"); setError(""); setNotice(""); }}>{mode === "signin" ? "Ainda não tenho conta" : "Já tenho uma conta"}</button></section></main>;
+}
+
+function formatAuthError(error, fallback) {
+  const message = String(error?.message || "").toLowerCase();
+  if (message.includes("rate limit") || message.includes("too many")) return "Muitas tentativas. Aguarde alguns minutos e tente novamente.";
+  if (message.includes("invalid email") || message.includes("email address")) return "Informe um email válido.";
+  if (message.includes("expired") || message.includes("invalid token") || message.includes("otp")) return "Link de recuperação inválido ou expirado.";
+  if (message.includes("password") && (message.includes("weak") || message.includes("short") || message.includes("least"))) return "A senha precisa ter pelo menos 8 caracteres.";
+  if (message.includes("fetch") || message.includes("network")) return "Não foi possível conectar ao serviço. Tente novamente.";
+  return fallback;
+}
+
+function ResetPasswordPage({ recoverySession, updatePassword, signOut }) {
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [updated, setUpdated] = useState(false);
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setError("");
+    setNotice("");
+    if (!recoverySession || !recoverySession.user) {
+      setError("Link de recuperação inválido ou expirado.");
+      return;
+    }
+    if (newPassword.length < 8) {
+      setError("A nova senha precisa ter pelo menos 8 caracteres.");
+      return;
+    }
+    if (newPassword !== confirmation) {
+      setError("A confirmação da senha não confere.");
+      return;
+    }
+    setLoading(true);
+    let result;
+    try {
+      result = await updatePassword(newPassword);
+    } catch {
+      result = { error: new Error("Falha de rede") };
+    }
+    if (result.error) {
+      setLoading(false);
+      setError(formatAuthError(result.error, "Não foi possível atualizar sua senha."));
+      return;
+    }
+    setUpdated(true);
+    setNotice("Sua senha foi atualizada.");
+    await signOut();
+    setLoading(false);
+  };
+
+  if (!recoverySession && !updated) {
+    return <main className="auth-page"><section className="auth-card"><div className="campaign-brand">∿ ASSIMILAÇÃO</div><span className="eyebrow">RECUPERAÇÃO DE ACESSO</span><h1>Link inválido ou expirado</h1><p>Solicite um novo link para definir sua senha.</p><button type="button" className="campaign-primary-btn auth-card-action" onClick={() => window.location.assign("/")}>Solicitar novo link</button></section></main>;
+  }
+
+  return <main className="auth-page"><section className="auth-card"><div className="campaign-brand">∿ ASSIMILAÇÃO</div><span className="eyebrow">NOVA SENHA</span><h1>{updated ? "Senha atualizada" : "Redefinir senha"}</h1>{updated ? <><p className="auth-form-notice" role="status">{notice}</p><button type="button" className="campaign-primary-btn auth-card-action" onClick={() => window.location.assign("/" )}>Voltar para login</button></> : <><p>Defina uma nova senha para continuar.</p><form className="auth-form" onSubmit={submit}><label>Nova senha<input required type="password" minLength={8} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} autoComplete="new-password" /></label><label>Confirmar nova senha<input required type="password" minLength={8} value={confirmation} onChange={(event) => setConfirmation(event.target.value)} autoComplete="new-password" /></label>{error && <p className="auth-form-error" role="alert">{error}</p>}<button type="submit" className="campaign-primary-btn" disabled={loading}>{loading ? "Atualizando..." : "Atualizar senha"}</button></form></>}</section></main>;
 }
 
 function CampaignListPage({ store, user, onOpenCampaign, onOpenCharacters, onOpenHomebrew, onCreateCampaign, onJoinCampaign, onSignOut }) {

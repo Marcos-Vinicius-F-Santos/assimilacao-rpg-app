@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { supabaseConfigured } from "../lib/supabase";
-import { getProfile, restoreSession, signIn, signOut, signUp, subscribeToAuthChanges } from "../services/authService";
+import { getProfile, requestPasswordReset, restoreSession, signIn, signOut, signUp, subscribeToAuthChanges, updatePassword } from "../services/authService";
 
 const AuthContext = createContext(null);
 
@@ -18,9 +18,16 @@ function userFromSession(session, profile = null) {
   };
 }
 
+function hasRecoveryCallback() {
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const searchParams = new URLSearchParams(window.location.search);
+  return hashParams.get("type") === "recovery" || searchParams.get("type") === "recovery";
+}
+
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
+  const [recoverySession, setRecoverySession] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -42,12 +49,15 @@ export function AuthProvider({ children }) {
     restoreSession().then(async ({ session: restoredSession }) => {
       if (!active) return;
       setSession(restoredSession);
+      if (hasRecoveryCallback() && restoredSession) setRecoverySession(restoredSession);
       await loadProfile(restoredSession);
       if (active) setLoading(false);
     });
 
-    const unsubscribe = subscribeToAuthChanges((nextSession) => {
+    const unsubscribe = subscribeToAuthChanges((nextSession, event) => {
       setSession(nextSession);
+      if (event === "PASSWORD_RECOVERY") setRecoverySession(nextSession);
+      if (event === "SIGNED_OUT") setRecoverySession(null);
       void loadProfile(nextSession);
       setLoading(false);
     });
@@ -62,6 +72,7 @@ export function AuthProvider({ children }) {
     configured: supabaseConfigured,
     session,
     user: userFromSession(session, profile),
+    recoverySession,
     loading,
     signIn: async (email, password) => {
       return signIn(email, password);
@@ -72,7 +83,9 @@ export function AuthProvider({ children }) {
     signOut: async () => {
       return signOut();
     },
-  }), [loading, profile, session]);
+    requestPasswordReset: async (email) => requestPasswordReset(email),
+    updatePassword: async (newPassword) => updatePassword(newPassword),
+  }), [loading, profile, recoverySession, session]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

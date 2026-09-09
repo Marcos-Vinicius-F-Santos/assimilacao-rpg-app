@@ -8,7 +8,7 @@ export async function restoreSession() {
 
 export function subscribeToAuthChanges(callback) {
   if (!supabase) return () => {};
-  const { data } = supabase.auth.onAuthStateChange((_event, session) => callback(session || null));
+  const { data } = supabase.auth.onAuthStateChange((event, session) => callback(session || null, event));
   return () => data.subscription.unsubscribe();
 }
 
@@ -31,4 +31,16 @@ export function signUp(email, password, displayName) {
 export function signOut() {
   if (!supabase) return Promise.resolve({ error: new Error("Supabase não configurado.") });
   return supabase.auth.signOut();
+}
+
+export function requestPasswordReset(email) {
+  if (!supabase) return Promise.resolve({ error: new Error("Supabase não configurado.") });
+  return supabase.auth.resetPasswordForEmail(email.trim(), {
+    redirectTo: `${window.location.origin}/reset-password`,
+  });
+}
+
+export function updatePassword(newPassword) {
+  if (!supabase) return Promise.resolve({ error: new Error("Supabase não configurado.") });
+  return supabase.auth.updateUser({ password: newPassword });
 }
