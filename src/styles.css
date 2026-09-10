@@ -3571,12 +3571,19 @@ html,
 .progression-history-row { display: flex; gap: 10px; padding: 7px 0; border-top: 1px dashed #c7ab84; color: #866e59; font-size: 12px; }
 .progression-history-row strong { min-width: 30px; color: #315e60; }
 .progression-history p { margin: 0; color: #866e59; font-size: 12px; }
+.progression-page-content { width: min(1120px, calc(100% - 76px)); margin: 0 auto; padding: 38px 0 70px; border-top: 0; }
+.progression-page-content > .paper-section-title { margin-bottom: 18px; }
+.progression-page-content .progression-characteristic-list { max-height: none; overflow: visible; }
+.progression-page-content .paper-assimilate { margin: 0 0 16px; padding: 15px 0 0; border-top: 1px solid #c4aa86; }
+.progression-page-content .paper-assimilate p { margin: 0; color: #866e59; font-size: 12px; line-height: 1.5; }
+.progression-page-shell .topbar { position: sticky; }
 @media (max-width: 760px) {
   .campaign-session-status,
   .campaign-session-open-form,
   .campaign-session-character-card { align-items: stretch; flex-direction: column; }
   .campaign-session-xp { flex-wrap: wrap; }
   .progression-aptitude-groups { grid-template-columns: 1fr; }
+  .progression-page-content { width: calc(100% - 34px); padding-top: 25px; }
 }
 
 /* Campaign foundation: the same paper palette as the character sheet. */

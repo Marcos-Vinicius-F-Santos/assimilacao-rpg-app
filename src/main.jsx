@@ -8,7 +8,6 @@ import {
   ChevronDown,
   ChevronRight,
   ClipboardList,
-  Flame,
   HeartPulse,
   History,
   LayoutDashboard,
@@ -20,6 +19,7 @@ import {
   Settings2,
   Sparkles,
   Sword,
+  TrendingUp,
   Users,
   X,
   Zap,
@@ -107,7 +107,7 @@ import {
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import { createCampaign as createRemoteCampaign, getCampaignState, joinCampaignByCode as joinRemoteCampaignByCode } from "./services/campaignService";
 import { changeCharacterDetermination, closeCampaignSession, getCharacterXp, getInstinctProgressionStatus, getOpenCampaignSession, getSessionAwards, getSessionCharacters, listCampaignSessions, listCharacteristicRequests, openCampaignSession, purchaseAptitudeUpgrade, requestCharacteristicPurchase, reviewCharacteristicPurchase, upsertSessionXpAward } from "./services/sessionService";
-import { completeCharacterAssimilation, createRemoteCampaignCharacter, updateRemoteCampaignCharacter } from "./services/sessionService";
+import { completeCharacterAssimilation, createRemoteCampaignCharacter, saveAssimilationProgress, updateRemoteCampaignCharacter } from "./services/sessionService";
 import {
   creationInstinctNames,
   creationKnowledgeNames,
@@ -232,31 +232,6 @@ function sanitizeTugOfWarState(character) {
       points: clampInteger(legacyAssimilation.points ?? assimilationLevel, 0, assimilationLevel, assimilationLevel),
     },
   };
-}
-
-function setDeterminationLevel(character, level) {
-  const current = sanitizeTugOfWarState(character);
-  const determinationLevel = clampInteger(level, TUG_MIN_LEVEL, TUG_MAX_LEVEL, current.determination.level);
-  const assimilationLevel = TUG_TOTAL_LEVEL - determinationLevel;
-  return {
-    ...current,
-    determination: {
-      ...current.determination,
-      level: determinationLevel,
-      points: Math.min(current.determination.points, determinationLevel),
-    },
-    assimilation: {
-      ...current.assimilation,
-      level: assimilationLevel,
-      points: Math.min(current.assimilation.points, assimilationLevel),
-    },
-  };
-}
-
-function setAssimilationLevel(character, level) {
-  const current = sanitizeTugOfWarState(character);
-  const assimilationLevel = clampInteger(level, TUG_MIN_LEVEL, TUG_MAX_LEVEL, current.assimilation.level);
-  return setDeterminationLevel(current, TUG_TOTAL_LEVEL - assimilationLevel);
 }
 
 function updateTugPoints(character, side, amount) {
@@ -456,6 +431,7 @@ function parseAppRoute(pathname = window.location.pathname) {
   if (parts.length === 3 && parts[2] === "assimilations") return { type: "campaign-assimilations", campaignId: decodeURIComponent(parts[1]) };
   if (parts.length === 3 && parts[2] === "sessions") return { type: "campaign-sessions", campaignId: decodeURIComponent(parts[1]) };
   if (parts.length === 4 && parts[2] === "characters" && parts[3] === "new") return { type: "campaign-character-create", campaignId: decodeURIComponent(parts[1]) };
+  if (parts.length === 5 && parts[2] === "characters" && parts[4] === "progression") return { type: "character-progression", campaignId: decodeURIComponent(parts[1]), characterId: decodeURIComponent(parts[3]) };
   if (parts.length === 2) return { type: "campaign", campaignId: decodeURIComponent(parts[1]) };
   if (parts.length === 4 && parts[2] === "characters") return { type: "character", campaignId: decodeURIComponent(parts[1]), characterId: decodeURIComponent(parts[3]) };
   return { type: "not-found" };
@@ -581,6 +557,8 @@ function AuthenticatedApp({ user, onSignOut }) {
     page = campaign && canCreateCampaignCharacter(campaignStore, user.id, route.campaignId)
       ? <CharacterCreationPage store={campaignStore} setStore={setCampaignStore} user={user} campaign={campaign} mode="campaign" onCancel={() => navigate(`/campaigns/${route.campaignId}`)} onComplete={(id) => navigate(`/campaigns/${route.campaignId}/characters/${id}`)} />
       : <CampaignAccessMessage title="Criação indisponível" description="Você já possui uma ficha nesta campanha ou não participa dela." onBack={() => navigate(`/campaigns/${route.campaignId}`)} />;
+  } else if (route.type === "character-progression") {
+    page = <ProgressionPage store={campaignStore} setStore={setCampaignStore} user={user} campaignId={route.campaignId} characterId={route.characterId} onBack={() => navigate(`/campaigns/${route.campaignId}`)} onOpenSheet={() => navigate(`/campaigns/${route.campaignId}/characters/${route.characterId}`)} onNavigate={navigate} notify={notify} mobileMenu={mobileMenu} setMobileMenu={setMobileMenu} />;
   } else if (route.type === "character") {
     page = <CharacterPage store={campaignStore} setStore={setCampaignStore} user={user} campaignId={route.campaignId} characterId={route.characterId} onBack={() => navigate(`/campaigns/${route.campaignId}`)} onOpenSessions={() => navigate(`/campaigns/${route.campaignId}/sessions`)} onNavigate={navigate} notify={notify} mobileMenu={mobileMenu} setMobileMenu={setMobileMenu} />;
   } else {
@@ -1393,8 +1371,40 @@ function CharacterPage({ store, setStore, user, campaignId, characterId, onBack,
     return result.ok;
   };
   return <div className="app-shell">
-    <Sidebar active="sheet" showAssimilate={Boolean(character.isSusceptible || character.assimilationPending)} onNavigate={(target) => document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" })} open={mobileMenu} onClose={() => setMobileMenu(false)} campaign={campaign} participantCount={getCampaignMemberships(store, campaignId).length} onCampaignClick={onBack} onSessions={onOpenSessions} />
+    <Sidebar active="sheet" onNavigate={(target) => document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" })} onProgression={() => onNavigate(`/campaigns/${campaignId}/characters/${characterId}/progression`)} open={mobileMenu} onClose={() => setMobileMenu(false)} campaign={campaign} participantCount={getCampaignMemberships(store, campaignId).length} onCampaignClick={onBack} onSessions={onOpenSessions} />
     <main className="main-content"><Topbar character={character} campaign={campaign} activeSession={activeSession} onMenu={() => setMobileMenu(true)} onBackToCampaign={onBack} /><CharacterSheet key={`${campaignId}:${characterId}`} character={character} characterId={characterId} campaignId={campaignId} setCharacter={setCharacter} canEdit={canEdit} isOwner={record.ownerUserId === user.id} activeSession={activeSession} user={user} onChangeDetermination={record.ownerUserId === user.id ? persistDeterminationChange : undefined} onNavigate={(target) => document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" })} notify={notify} store={store} availableItems={getCampaignAvailableItems(store, campaignId)} onCreateCampaignItem={createItemForCampaign} /></main>
+  </div>;
+}
+
+function ProgressionPage({ store, setStore, user, campaignId, characterId, onBack, onOpenSheet, onNavigate, notify, mobileMenu, setMobileMenu }) {
+  const campaign = getCampaignById(store, campaignId);
+  const record = getCharacterById(store, characterId);
+  const [activeSession, setActiveSession] = useState(null);
+  useEffect(() => {
+    let active = true;
+    if (!campaign) return undefined;
+    getOpenCampaignSession(campaignId).then((session) => { if (active) setActiveSession(session); }).catch(() => { if (active) setActiveSession(null); });
+    return () => { active = false; };
+  }, [campaignId, campaign]);
+  const allowed = Boolean(campaign && record && record.campaignId === campaignId && canViewCharacter(store, user.id, characterId));
+  if (!allowed) return <CampaignAccessMessage title="Acesso à progressão negado" description="Jogadores só podem abrir a progressão da própria ficha. O mestre pode acompanhar qualquer personagem da campanha." onBack={onBack} />;
+  const character = sanitizeTugOfWarState(record.data || record);
+  const isOwner = record.ownerUserId === user.id;
+  const role = getCampaignRole(store, user.id, campaignId);
+  const values = { ...Object.fromEntries([...instincts, ...knowledge, ...practices].map(([name]) => [name, 0])), ...(character.aptitudes || {}) };
+  const setCharacter = (updater) => setStore((current) => updateCharacterRecord(current, characterId, updater));
+  const navigateFromSidebar = (target) => {
+    if (target === "progression") return;
+    if (target === "sheet") {
+      onOpenSheet();
+      return;
+    }
+    onOpenSheet();
+    window.setTimeout(() => document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  };
+  return <div className="app-shell progression-page-shell">
+    <Sidebar active="progression" onNavigate={navigateFromSidebar} onProgression={() => {}} open={mobileMenu} onClose={() => setMobileMenu(false)} campaign={campaign} participantCount={getCampaignMemberships(store, campaignId).length} onCampaignClick={onBack} onSessions={() => onNavigate(`/campaigns/${campaignId}/sessions`)} />
+    <main className="main-content"><Topbar character={character} campaign={campaign} activeSession={activeSession} onMenu={() => setMobileMenu(true)} onBackToCampaign={onBack} /><ProgressionPanel character={character} characterId={characterId} campaignId={campaignId} values={values} setCharacter={setCharacter} activeSession={activeSession} isOwner={isOwner} isMaster={role === "master"} notify={notify} /></main>
   </div>;
 }
 
@@ -1402,12 +1412,12 @@ function CampaignAccessMessage({ title, description, onBack }) {
   return <div className="campaign-page campaign-message-page"><div className="campaign-message"><div className="campaign-brand">∿ ASSIMILAÇÃO</div><span className="eyebrow">ACESSO</span><h1>{title}</h1><p>{description}</p><button type="button" className="campaign-primary-btn" onClick={onBack}>← Minhas campanhas</button></div></div>;
 }
 
-function Sidebar({ active, onNavigate, open, onClose, campaign, participantCount = 0, onCampaignClick, onSessions, showAssimilate = false }) {
+function Sidebar({ active, onNavigate, onProgression, open, onClose, campaign, participantCount = 0, onCampaignClick, onSessions }) {
   const items = [
     ["sheet", "Ficha do personagem", ClipboardList],
     ["assimilation-section", "Assimilações", Sparkles],
     ["inventory", "Inventário", Backpack],
-    ...(showAssimilate ? [["assimilate", "Assimilar", Flame]] : []),
+    ["progression", "Progressão", TrendingUp],
   ];
   return (
     <>
@@ -1439,7 +1449,7 @@ function Sidebar({ active, onNavigate, open, onClose, campaign, participantCount
             <button
               key={id}
               className={`nav-item ${active === id ? "active" : ""}`}
-              onClick={() => onNavigate(id)}
+              onClick={() => id === "progression" ? onProgression?.() : onNavigate(id)}
             >
               <Icon size={18} />
               <span>{label}</span>
@@ -1786,11 +1796,10 @@ function OriginalSheet({ character, characterId, campaignId, setCharacter, canEd
         <HealthTracker health={healthTotal} levels={defaultHealthLevels} damagedPips={damagedPips} onToggleDamage={(pipKey) => setDamagedPips((current) => ({ ...current, [pipKey]: !current[pipKey] }))} />
       </div>
       <div className="paper-lists-grid">
-         <PaperMutations character={character} setCharacter={setCharacter} values={values} canEdit={canEdit} onOpenDetail={setDetailPopup} onNavigate={onNavigate} />
-        <PaperAssimilations character={character} setCharacter={setCharacter} canEdit={canEdit} onOpenDetail={setDetailPopup} notify={notify} />
+         <PaperMutations character={character} onOpenDetail={setDetailPopup} onNavigate={onNavigate} />
+        <PaperAssimilations character={character} onOpenDetail={setDetailPopup} />
       </div>
       <TugOfWar character={character} setCharacter={setCharacter} onChangeDetermination={onChangeDetermination} />
-      {(character.isSusceptible || character.assimilationPending) && <CharacterAssimilationPanel character={character} characterId={characterId} setCharacter={setCharacter} activeSession={activeSession} isOwner={isOwner} notify={notify} />}
       <section id="inventory" className="embedded-section paper-inventory-section">
         <Inventory key={`${campaignId || "campaign"}:${characterId || "character"}`} notify={notify} campaignId={campaignId} characterId={characterId} storageKey={characterId ? `${INVENTORY_STORAGE_KEY}:${characterId}` : INVENTORY_STORAGE_KEY} store={store} availableItems={availableItems} onCreateCampaignItem={onCreateCampaignItem} />
       </section>
@@ -1802,22 +1811,40 @@ function OriginalSheet({ character, characterId, campaignId, setCharacter, canEd
   );
 }
 
-function CharacterAssimilationPanel({ character, characterId, setCharacter, activeSession, isOwner, notify }) {
+function CharacterAssimilationPanel({ character, characterId, setCharacter, activeSession, isOwner, isMaster, notify }) {
   const level = Number(character.assimilation?.level || 0);
-  const [flow, setFlow] = useState(() => createInitialAssimilationDraft(level));
+  const createFlowFromCharacter = () => {
+    const saved = character.pendingAssimilation?.flow;
+    if (!saved || typeof saved !== "object") return createInitialAssimilationDraft(level);
+    return {
+      ...createInitialAssimilationDraft(level),
+      ...saved,
+      level,
+      test: saved.test || createInitialAssimilationDraft(level).test,
+      cardDraw: saved.cardDraw || createInitialAssimilationDraft(level).cardDraw,
+      acquisitions: Array.isArray(saved.acquisitions) ? saved.acquisitions : [],
+    };
+  };
+  const [flow, setFlow] = useState(createFlowFromCharacter);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    setFlow(createInitialAssimilationDraft(level));
+    setFlow(createFlowFromCharacter());
     setError("");
-  }, [level, character.pendingAssimilation?.transitionId]);
+  }, [level, character.pendingAssimilation?.transitionId, character.pendingAssimilation?.flow]);
 
   const result = flow.test?.result || { success: 0, adaptation: 0, failure: 0 };
   const isZeroResult = zeroAssimilationResult(result);
   const counts = getRequiredAssimilationCardCounts(result);
   const cardDraw = flow.cardDraw || {};
   const cardsReady = isZeroResult || validateAssimilationCards(cardDraw, result).length === 0;
-  const updateFlow = (updater) => setFlow((current) => updater(current));
+  const updateFlow = (updater) => {
+    setFlow((current) => {
+      const next = updater(current);
+      void saveAssimilationProgress(characterId, next).catch((nextError) => setError(nextError.message || "Não foi possível salvar o processo de Assimilação."));
+      return next;
+    });
+  };
   const resetCardDraw = () => ({
     source: null,
     evolutive: [],
@@ -1902,19 +1929,30 @@ function CharacterAssimilationPanel({ character, characterId, setCharacter, acti
   };
 
   const families = [["evolutive", "Cartas Evolutivas", "Sucessos"], ["adaptive", "Cartas Adaptativas", "Adaptações"], ["inopportune", "Cartas Inoportunas", "Falhas"]];
+  if (!character.assimilationPending && !character.isSusceptible) {
+    return (
+      <section id="assimilate" className="paper-assimilate embedded-section">
+        <div className="paper-section-title">
+          <div>
+            <h2>ASSIMILAÇÃO</h2>
+            <span>PROGRESSÃO DO PERSONAGEM</span>
+          </div>
+        </div>
+        <p>Nenhum processo de Assimilação pendente.</p>
+      </section>
+    );
+  }
+
   if (!character.assimilationPending) {
     return (
       <section id="assimilate" className="paper-assimilate embedded-section">
         <div className="paper-section-title">
           <div>
-            <h2>ASSIMILAR</h2>
-            <span>ESTADO SUSCETÍVEL</span>
+            <h2>SUSCETÍVEL</h2>
+            <span>AGUARDANDO NOVA PERDA</span>
           </div>
         </div>
-        <p>
-          Se o personagem sofrer nova perda de Determinação enquanto estiver com seus
-          Pontos zerados, o nível diminuirá e a Assimilação avançará.
-        </p>
+        <p>O personagem esgotou seus Pontos de Determinação. Uma nova perda fará o nível de Determinação diminuir e o nível de Assimilação avançar automaticamente.</p>
       </section>
     );
   }
@@ -1940,12 +1978,12 @@ function CharacterAssimilationPanel({ character, characterId, setCharacter, acti
         <div className="initial-assimilation-choice">
           <p>Resolva o Teste de Assimilação.</p>
           <div>
-            <button type="button" className="campaign-primary-btn" disabled={!isOwner} onClick={roll}>
+            <button type="button" className="campaign-primary-btn" disabled={!isOwner && !isMaster} onClick={roll}>
               Rolar digitalmente
             </button>
-            <button type="button" className="campaign-secondary-btn" disabled={!isOwner} onClick={manual}>
+            {isMaster && <button type="button" className="campaign-secondary-btn" onClick={manual}>
               Inserir resultado manual
-            </button>
+            </button>}
           </div>
         </div>
       ) : (
@@ -1964,7 +2002,7 @@ function CharacterAssimilationPanel({ character, characterId, setCharacter, acti
                     type="number"
                     min="0"
                     value={result[key]}
-                    onChange={(event) => updateFlow((current) => ({
+                        onChange={(event) => updateFlow((current) => ({
                       ...current,
                       test: {
                         ...current.test,
@@ -1981,7 +2019,7 @@ function CharacterAssimilationPanel({ character, characterId, setCharacter, acti
           )}
 
           {!flow.test.confirmed && (
-            <button type="button" className="campaign-primary-btn" disabled={!isOwner} onClick={confirm}>
+            <button type="button" className="campaign-primary-btn" disabled={!isOwner && !isMaster} onClick={confirm}>
               Confirmar resultado
             </button>
           )}
@@ -2083,7 +2121,7 @@ function ProgressionPanel({ character, characterId, campaignId, values, setChara
     setBusy(true); setError("");
     try { await reviewCharacteristicPurchase(requestId, approve); await refresh(); notify(approve ? "Característica aprovada." : "Solicitação recusada."); } catch (nextError) { setError(nextError.message || "Não foi possível revisar a solicitação."); } finally { setBusy(false); }
   };
-  return <section id="progression" className="paper-progression embedded-section"><div className="paper-section-title"><div><h2>PROGRESSÃO</h2><span>EVOLUÇÃO ENTRE SESSÕES</span></div><strong>XP {xp.available}</strong></div>{activeSession && <p className="progression-lock">A progressão fica disponível após o encerramento da sessão atual.</p>}{error && <p className="progression-error" role="alert">{error}</p>}<div className="progression-aptitude-groups">{aptitudeGroups.map(([title, type, items]) => <div className="progression-aptitude-group" key={type}><h3>{title}</h3>{items.map(([name]) => { const currentLevel = Number(values[name] || 0); const cost = (currentLevel + 1) * (type === "instinct" ? 3 : 2); const lockedInstinct = type === "instinct" && !mutationSession; return <div className="progression-aptitude-row" key={name}><span>{name}<small>Nível {currentLevel} → {currentLevel + 1} · {cost} XP</small></span><button type="button" disabled={!isOwner || Boolean(activeSession) || lockedInstinct || xp.available < cost || busy} onClick={() => upgrade(type, name)}>{lockedInstinct ? "Bloqueado" : xp.available < cost ? "XP insuficiente" : "Aumentar"}</button></div>; })}</div>)}</div><div className="progression-characteristics"><div className="paper-section-title"><div><h3>CARACTERÍSTICAS</h3><span>REQUEREM AUTORIZAÇÃO DO MESTRE</span></div></div><div className="progression-characteristic-list">{characteristicCatalog.filter((item) => !item.initialCreationOnly).map((item) => { const request = requests.find((entry) => entry.characteristicId === item.id); const eligible = evaluateCharacteristicRequirement(item.requirements, values, character.assimilation?.level || 0); return <div className="progression-characteristic-row" key={item.id}><span><strong>{item.name}</strong><small>{item.cost} XP · {formatCharacteristicRequirement(item.requirements)}</small></span><button type="button" disabled={!isOwner || Boolean(activeSession) || ownedCharacteristics.has(item.id) || !eligible || request?.status === "pending" || busy} onClick={() => requestCharacteristic(item)}>{ownedCharacteristics.has(item.id) ? "Adquirida" : request?.status === "pending" ? "Aguardando Mestre" : !eligible ? "Requisito pendente" : "Solicitar ao Mestre"}</button>{!isOwner && request?.status === "pending" && <span className="progression-request-review"><button type="button" disabled={busy} onClick={() => reviewCharacteristic(request.id, true)}>Aprovar</button><button type="button" disabled={busy} onClick={() => reviewCharacteristic(request.id, false)}>Rejeitar</button></span>}</div>; })}</div></div><div className="progression-history"><div className="paper-section-title"><div><h3>HISTÓRICO DE XP</h3></div></div>{xp.transactions.length ? xp.transactions.map((transaction) => <div className="progression-history-row" key={transaction.id}><strong>{transaction.amount > 0 ? "+" : ""}{transaction.amount}</strong><span>{transaction.description}</span></div>) : <p>Nenhuma transação registrada.</p>}</div></section>;
+  return <section id="progression" className="paper-progression progression-page-content"><div className="paper-section-title"><div><h2>PROGRESSÃO</h2><span>EVOLUÇÃO DO PERSONAGEM</span></div><strong>XP {xp.available}</strong></div>{(character.assimilationPending || character.isSusceptible) && <CharacterAssimilationPanel character={character} characterId={characterId} setCharacter={setCharacter} activeSession={activeSession} isOwner={isOwner} isMaster={isMaster} notify={notify} />}{activeSession && <p className="progression-lock">A progressão por Experiência fica disponível após o encerramento da sessão atual.</p>}{error && <p className="progression-error" role="alert">{error}</p>}<div className="progression-aptitude-groups">{aptitudeGroups.map(([title, type, items]) => <div className="progression-aptitude-group" key={type}><h3>{title}</h3>{items.map(([name]) => { const currentLevel = Number(values[name] || 0); const cost = (currentLevel + 1) * (type === "instinct" ? 3 : 2); const lockedInstinct = type === "instinct" && !mutationSession; return <div className="progression-aptitude-row" key={name}><span>{name}<small>Nível {currentLevel} → {currentLevel + 1} · {cost} XP</small></span><button type="button" disabled={!isOwner || Boolean(activeSession) || lockedInstinct || xp.available < cost || busy} onClick={() => upgrade(type, name)}>{lockedInstinct ? "Bloqueado" : xp.available < cost ? "XP insuficiente" : "Aumentar"}</button></div>; })}</div>)}</div><div className="progression-characteristics"><div className="paper-section-title"><div><h3>CARACTERÍSTICAS</h3><span>REQUEREM AUTORIZAÇÃO DO MESTRE</span></div></div><div className="progression-characteristic-list">{characteristicCatalog.filter((item) => !item.initialCreationOnly).map((item) => { const request = requests.find((entry) => entry.characteristicId === item.id); const eligible = evaluateCharacteristicRequirement(item.requirements, values, character.assimilation?.level || 0); return <div className="progression-characteristic-row" key={item.id}><span><strong>{item.name}</strong><small>{item.cost} XP · {formatCharacteristicRequirement(item.requirements)}</small></span><button type="button" disabled={!isOwner || Boolean(activeSession) || ownedCharacteristics.has(item.id) || !eligible || request?.status === "pending" || busy} onClick={() => requestCharacteristic(item)}>{ownedCharacteristics.has(item.id) ? "Adquirida" : request?.status === "pending" ? "Aguardando Mestre" : !eligible ? "Requisito pendente" : "Solicitar ao Mestre"}</button>{!isOwner && request?.status === "pending" && <span className="progression-request-review"><button type="button" disabled={busy} onClick={() => reviewCharacteristic(request.id, true)}>Aprovar</button><button type="button" disabled={busy} onClick={() => reviewCharacteristic(request.id, false)}>Rejeitar</button></span>}</div>; })}</div></div><div className="progression-history"><div className="paper-section-title"><div><h3>HISTÓRICO DE XP</h3></div></div>{xp.transactions.length ? xp.transactions.map((transaction) => <div className="progression-history-row" key={transaction.id}><strong>{transaction.amount > 0 ? "+" : ""}{transaction.amount}</strong><span>{transaction.description}</span></div>) : <p>Nenhuma transação registrada.</p>}</div></section>;
 }
 
 function TugOfWar({ character, setCharacter, onChangeDetermination }) {
@@ -2091,18 +2129,6 @@ function TugOfWar({ character, setCharacter, onChangeDetermination }) {
   const determination = current.determination;
   const assimilation = current.assimilation;
   const [pointBusy, setPointBusy] = useState(false);
-  const changeLevel = (side, amount) => setCharacter((value) => {
-    const state = sanitizeTugOfWarState(value);
-    const level = state[side].level + amount;
-    return side === "determination"
-      ? setDeterminationLevel(state, level)
-      : setAssimilationLevel(state, level);
-  });
-  const setLevel = (side, level) => setCharacter((value) => (
-    side === "determination"
-      ? setDeterminationLevel(value, level)
-      : setAssimilationLevel(value, level)
-  ));
   const adjustLocalPoints = (side, amount) => setCharacter((value) => {
     if (side === "determination") {
       return amount < 0
@@ -2138,7 +2164,7 @@ function TugOfWar({ character, setCharacter, onChangeDetermination }) {
         key={index}
         type="button"
         className={`tug-bar tug-bar--${state}`}
-        disabled={!owned || pointBusy || (side === "determination" && !onChangeDetermination)}
+        disabled={!owned || pointBusy || (side === "determination" && (!onChangeDetermination || character.assimilationPending))}
         onClick={() => owned && togglePoint(side, spent)}
         aria-label={owned
           ? `${side === "determination" ? "Determinação" : "Assimilação"}, ponto ${pointIndex + 1} de ${level}, ${spent ? "gasto" : "disponível"}`
@@ -2154,8 +2180,6 @@ function TugOfWar({ character, setCharacter, onChangeDetermination }) {
           <strong>Determinação</strong>
           <div className="tug-side-meta">
             <span>Nível {determination.level}</span>
-            <button type="button" onClick={() => changeLevel("determination", -1)} disabled={determination.level <= TUG_MIN_LEVEL} aria-label="Diminuir nível de Determinação">−</button>
-            <button type="button" onClick={() => changeLevel("determination", 1)} disabled={determination.level >= TUG_MAX_LEVEL} aria-label="Aumentar nível de Determinação">+</button>
             <span>Pontos {determination.points}/{determination.level}</span>
           </div>
         </div>
@@ -2163,8 +2187,6 @@ function TugOfWar({ character, setCharacter, onChangeDetermination }) {
           <strong>Assimilação</strong>
           <div className="tug-side-meta">
             <span>Nível {assimilation.level}</span>
-            <button type="button" onClick={() => changeLevel("assimilation", -1)} disabled={assimilation.level <= TUG_MIN_LEVEL} aria-label="Diminuir nível de Assimilação">−</button>
-            <button type="button" onClick={() => changeLevel("assimilation", 1)} disabled={assimilation.level >= TUG_MAX_LEVEL} aria-label="Aumentar nível de Assimilação">+</button>
             <span>Pontos {assimilation.points}/{assimilation.level}</span>
           </div>
         </div>
@@ -2310,38 +2332,17 @@ function CharacteristicDetail({ item, reference, onOpenDetail, onRemove }) {
   </div>;
 }
 
-function PaperMutations({ character, setCharacter, values, canEdit, onOpenDetail, onNavigate }) {
-  const [catalogState, setCatalogState] = useState(null);
+function PaperMutations({ character, onOpenDetail, onNavigate }) {
   const refs = getCharacterCharacteristicRefs(character);
-  const canonicalRefs = Array.isArray(character.characterCharacteristics) ? character.characterCharacteristics : [];
-  const acquiredIds = new Set(refs.map(getCharacteristicRefId).filter(Boolean));
-  const addCharacteristic = (characteristicId, choices) => {
-    setCharacter((current) => {
-      const existing = getCharacterCharacteristicRefs(current);
-      if (existing.some((reference) => getCharacteristicRefId(reference) === characteristicId)) return current;
-      const currentCanonical = Array.isArray(current.characterCharacteristics) ? current.characterCharacteristics : [];
-      return {
-        ...current,
-        characterCharacteristics: [...currentCanonical, { characteristicId, ...(choices ? { choices } : {}) }],
-      };
-    });
-    setCatalogState(null);
-  };
-  const removeCharacteristic = (reference) => setCharacter((current) => {
-    const currentCanonical = Array.isArray(current.characterCharacteristics) ? current.characterCharacteristics : [];
-    const index = currentCanonical.findIndex((entry) => entry === reference || (getCharacteristicRefId(entry) === getCharacteristicRefId(reference) && JSON.stringify(entry.choices || {}) === JSON.stringify(reference.choices || {})));
-    return index < 0 ? current : { ...current, characterCharacteristics: currentCanonical.filter((_, entryIndex) => entryIndex !== index) };
-  });
   return <section className="paper-mutations">
     <div className="paper-section-title"><h2>CARACTERÍSTICAS</h2></div>
     <div className="paper-mutation-list">
       {refs.map((reference, index) => {
         const item = characteristicCatalogById[getCharacteristicRefId(reference)];
-        return <CharacteristicDetail key={`${getCharacteristicRefId(reference) || "legacy"}-${index}`} item={item} reference={reference} onOpenDetail={onOpenDetail} onRemove={canEdit && canonicalRefs.includes(reference) ? () => removeCharacteristic(reference) : null} />;
+        return <CharacteristicDetail key={`${getCharacteristicRefId(reference) || "legacy"}-${index}`} item={item} reference={reference} onOpenDetail={onOpenDetail} />;
       })}
     </div>
-    {canEdit && <button type="button" className="paper-add-btn" onClick={() => setCatalogState({ selectedId: null, search: "", cost: "all" })}><Plus size={14} /> CARACTERÍSTICA</button>}
-    {catalogState && <CharacteristicCatalogModal state={catalogState} setState={setCatalogState} values={values} character={character} acquiredIds={acquiredIds} onAdd={addCharacteristic} />}
+    {!refs.length && <p className="paper-empty-list">Nenhuma característica adicionada à ficha.</p>}
   </section>;
 }
 
@@ -2473,27 +2474,8 @@ function getAcquiredAssimilationAbilities(item, reference) {
   return item.abilities.filter((ability) => acquired.has(getMutationId(item, ability)));
 }
 
-function PaperAssimilations({ character, setCharacter, canEdit, onOpenDetail, notify }) {
-  const [catalogState, setCatalogState] = useState(null);
+function PaperAssimilations({ character, onOpenDetail }) {
   const refs = getCharacterAssimilationRefs(character);
-  const canonicalRefs = Array.isArray(character.characterAssimilations) ? character.characterAssimilations : [];
-  const acquiredIds = new Set(refs.map(getAssimilationRefId).filter((id) => assimilationCatalogById[id]));
-  const addAssimilation = (assimilationId) => {
-    setCharacter((current) => {
-      const existing = getCharacterAssimilationRefs(current);
-      if (existing.some((reference) => getAssimilationRefId(reference) === assimilationId)) return current;
-      const currentCanonical = Array.isArray(current.characterAssimilations) ? current.characterAssimilations : [];
-      return { ...current, characterAssimilations: [...currentCanonical, { assimilationId }] };
-    });
-    setCatalogState(null);
-    notify("Assimilação adicionada à ficha.");
-  };
-  const removeAssimilation = (reference) => setCharacter((current) => {
-    const currentCanonical = Array.isArray(current.characterAssimilations) ? current.characterAssimilations : [];
-    const referenceId = getAssimilationRefId(reference);
-    const index = currentCanonical.findIndex((entry) => entry === reference || getAssimilationRefId(entry) === referenceId);
-    return index < 0 ? current : { ...current, characterAssimilations: currentCanonical.filter((_, entryIndex) => entryIndex !== index) };
-  });
   const openAssimilationDetail = (item, reference) => onOpenDetail(item ? assimilationDetail(item, reference) : {
     category: "Assimilação",
     symbol: reference?.rank || "A",
@@ -2518,13 +2500,10 @@ function PaperAssimilations({ character, setCharacter, canEdit, onOpenDetail, no
               <span className="paper-mutation-copy"><strong>{name}</strong><small>{item ? `${assimilationFamilyShortLabels[item.family]} · ${family} · Nível ${item.level}${Array.isArray(reference.mutationIds) ? ` · ${reference.mutationIds.length} mutação${reference.mutationIds.length === 1 ? "" : "ões"} adquirida${reference.mutationIds.length === 1 ? "" : "s"}` : ""}` : family}</small></span>
               <ChevronRight className="paper-mutation-chevron" size={15} />
             </button>
-            {canEdit && canonicalRefs.includes(reference) && <button type="button" className="paper-characteristic-remove" onClick={() => removeAssimilation(reference)} aria-label={`Remover ${name}`}><X size={13} /></button>}
           </div>
         </div>;
       }) : <p className="paper-empty-list">Nenhuma assimilação adicionada à ficha.</p>}
     </div>
-    {canEdit && <button type="button" className="paper-add-btn" onClick={() => setCatalogState({ selectedId: null, search: "", family: "all", level: "all" })}><Plus size={14} /> ADICIONAR ASSIMILAÇÃO</button>}
-    {catalogState && <AssimilationCatalogModal state={catalogState} setState={setCatalogState} acquiredIds={acquiredIds} onAdd={addAssimilation} />}
   </section>;
 }
 

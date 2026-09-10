@@ -143,6 +143,13 @@ export async function completeCharacterAssimilation(characterId, additions) {
   return Array.isArray(data) ? data[0] : data;
 }
 
+export async function saveAssimilationProgress(characterId, progress) {
+  requireCampaignCharacterUuid(characterId);
+  const { data, error } = await client().rpc("save_assimilation_progress", { target_character_id: characterId, progress: progress || {} });
+  if (error) throw error;
+  return Array.isArray(data) ? data[0] : data;
+}
+
 export async function createRemoteCampaignCharacter(campaignId, name, data) {
   const { data: rows, error } = await client().rpc("create_campaign_character", { target_campaign_id: campaignId, character_name: name, character_data: data || {} });
   if (error) throw error;
