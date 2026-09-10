@@ -1247,7 +1247,7 @@ function CampaignSessionsPage({ store, user, campaignId, onBack, onOpenCharacter
   const finishSession = async () => {
     if (!activeSession || busy || !window.confirm("Esta sessão será encerrada permanentemente e não poderá ser reaberta.")) return;
     setBusy(true);
-    try { await closeCampaignSession(activeSession.id); await refresh(); notify("Sessão encerrada e XP consolidado."); } catch (nextError) { setError(nextError.message || "Não foi possível fechar a sessão."); } finally { setBusy(false); }
+    try { await closeCampaignSession(activeSession.id); await refresh(); notify("Sessão encerrada e XP consolidado."); } catch (nextError) { if (import.meta.env.DEV) console.error("Falha técnica ao encerrar sessão", nextError); setError("Não foi possível encerrar a sessão. Tente novamente."); } finally { setBusy(false); }
   };
   const displayCharacters = characters.length ? characters : (store.characters || []).filter((character) => character.campaignId === campaignId).map((character) => ({ id: character.id, owner_user_id: character.ownerUserId, name: character.name, data: character.data || character, is_susceptible: character.data?.isSusceptible, assimilation_pending: character.data?.assimilationPending }));
   const awardFor = (characterId) => awards.find((award) => award.characterId === characterId)?.amount || 0;
