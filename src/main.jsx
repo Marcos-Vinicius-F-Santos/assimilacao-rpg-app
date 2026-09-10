@@ -2081,7 +2081,7 @@ function CharacterAssimilationPanel({ character, characterId, setCharacter, acti
   );
 }
 
-function ProgressionPanel({ character, characterId, campaignId, values, setCharacter, activeSession, isOwner, notify }) {
+function ProgressionPanel({ character, characterId, campaignId, values, setCharacter, activeSession, isOwner, isMaster, notify }) {
   const [xp, setXp] = useState({ available: 0, transactions: [] });
   const [requests, setRequests] = useState([]);
   const [mutationSession, setMutationSession] = useState(null);
@@ -2121,7 +2121,55 @@ function ProgressionPanel({ character, characterId, campaignId, values, setChara
     setBusy(true); setError("");
     try { await reviewCharacteristicPurchase(requestId, approve); await refresh(); notify(approve ? "Característica aprovada." : "Solicitação recusada."); } catch (nextError) { setError(nextError.message || "Não foi possível revisar a solicitação."); } finally { setBusy(false); }
   };
-  return <section id="progression" className="paper-progression progression-page-content"><div className="paper-section-title"><div><h2>PROGRESSÃO</h2><span>EVOLUÇÃO DO PERSONAGEM</span></div><strong>XP {xp.available}</strong></div>{(character.assimilationPending || character.isSusceptible) && <CharacterAssimilationPanel character={character} characterId={characterId} setCharacter={setCharacter} activeSession={activeSession} isOwner={isOwner} isMaster={isMaster} notify={notify} />}{activeSession && <p className="progression-lock">A progressão por Experiência fica disponível após o encerramento da sessão atual.</p>}{error && <p className="progression-error" role="alert">{error}</p>}<div className="progression-aptitude-groups">{aptitudeGroups.map(([title, type, items]) => <div className="progression-aptitude-group" key={type}><h3>{title}</h3>{items.map(([name]) => { const currentLevel = Number(values[name] || 0); const cost = (currentLevel + 1) * (type === "instinct" ? 3 : 2); const lockedInstinct = type === "instinct" && !mutationSession; return <div className="progression-aptitude-row" key={name}><span>{name}<small>Nível {currentLevel} → {currentLevel + 1} · {cost} XP</small></span><button type="button" disabled={!isOwner || Boolean(activeSession) || lockedInstinct || xp.available < cost || busy} onClick={() => upgrade(type, name)}>{lockedInstinct ? "Bloqueado" : xp.available < cost ? "XP insuficiente" : "Aumentar"}</button></div>; })}</div>)}</div><div className="progression-characteristics"><div className="paper-section-title"><div><h3>CARACTERÍSTICAS</h3><span>REQUEREM AUTORIZAÇÃO DO MESTRE</span></div></div><div className="progression-characteristic-list">{characteristicCatalog.filter((item) => !item.initialCreationOnly).map((item) => { const request = requests.find((entry) => entry.characteristicId === item.id); const eligible = evaluateCharacteristicRequirement(item.requirements, values, character.assimilation?.level || 0); return <div className="progression-characteristic-row" key={item.id}><span><strong>{item.name}</strong><small>{item.cost} XP · {formatCharacteristicRequirement(item.requirements)}</small></span><button type="button" disabled={!isOwner || Boolean(activeSession) || ownedCharacteristics.has(item.id) || !eligible || request?.status === "pending" || busy} onClick={() => requestCharacteristic(item)}>{ownedCharacteristics.has(item.id) ? "Adquirida" : request?.status === "pending" ? "Aguardando Mestre" : !eligible ? "Requisito pendente" : "Solicitar ao Mestre"}</button>{!isOwner && request?.status === "pending" && <span className="progression-request-review"><button type="button" disabled={busy} onClick={() => reviewCharacteristic(request.id, true)}>Aprovar</button><button type="button" disabled={busy} onClick={() => reviewCharacteristic(request.id, false)}>Rejeitar</button></span>}</div>; })}</div></div><div className="progression-history"><div className="paper-section-title"><div><h3>HISTÓRICO DE XP</h3></div></div>{xp.transactions.length ? xp.transactions.map((transaction) => <div className="progression-history-row" key={transaction.id}><strong>{transaction.amount > 0 ? "+" : ""}{transaction.amount}</strong><span>{transaction.description}</span></div>) : <p>Nenhuma transação registrada.</p>}</div></section>;
+  const availableCharacteristics = characteristicCatalog.filter((item) => !item.initialCreationOnly);
+  return (
+    <section id="progression" className="paper-progression progression-page-content">
+      <div className="paper-section-title">
+        <div><h2>PROGRESSÃO</h2><span>EVOLUÇÃO DO PERSONAGEM</span></div>
+        <strong>XP {xp.available}</strong>
+      </div>
+      {(character.assimilationPending || character.isSusceptible) && <CharacterAssimilationPanel character={character} characterId={characterId} setCharacter={setCharacter} activeSession={activeSession} isOwner={isOwner} isMaster={isMaster} notify={notify} />}
+      {activeSession && <p className="progression-lock">A progressão por Experiência fica disponível após o encerramento da sessão atual.</p>}
+      {error && <p className="progression-error" role="alert">{error}</p>}
+      <div className="progression-aptitude-groups">
+        {aptitudeGroups.map(([title, type, items]) => (
+          <div className="progression-aptitude-group" key={type}>
+            <h3>{title}</h3>
+            {items.map(([name]) => {
+              const currentLevel = Number(values[name] || 0);
+              const cost = (currentLevel + 1) * (type === "instinct" ? 3 : 2);
+              const lockedInstinct = type === "instinct" && !mutationSession;
+              return <div className="progression-aptitude-row" key={name}><span>{name}<small>Nível {currentLevel} → {currentLevel + 1} · {cost} XP</small></span><button type="button" disabled={!isOwner || Boolean(activeSession) || lockedInstinct || xp.available < cost || busy} onClick={() => upgrade(type, name)}>{lockedInstinct ? "Bloqueado" : xp.available < cost ? "XP insuficiente" : "Aumentar"}</button></div>;
+            })}
+          </div>
+        ))}
+      </div>
+      <div className="progression-characteristics">
+        <div className="paper-section-title"><div><h3>CARACTERÍSTICAS</h3><span>REQUEREM AUTORIZAÇÃO DO MESTRE</span></div></div>
+        <div className="progression-characteristic-list">
+          {availableCharacteristics.map((item) => {
+            const request = requests.find((entry) => entry.characteristicId === item.id);
+            const eligible = evaluateCharacteristicRequirement(item.requirements, values, character.assimilation?.level || 0);
+            const owned = ownedCharacteristics.has(item.id);
+            const pending = request?.status === "pending";
+            return <div className="progression-characteristic-row" key={item.id}>
+              <div className="progression-characteristic-copy">
+                <strong>{item.name}</strong>
+                <small>{item.cost} XP · {formatCharacteristicRequirement(item.requirements)}</small>
+                <details><summary>Descrição</summary><p>{item.description}</p></details>
+              </div>
+              <button type="button" disabled={!isOwner || Boolean(activeSession) || owned || !eligible || pending || busy} onClick={() => requestCharacteristic(item)}>{owned ? "JÁ POSSUI" : pending ? "AGUARDANDO MESTRE" : !eligible ? "REQUISITO PENDENTE" : "SOLICITAR AO MESTRE"}</button>
+              {!isOwner && pending && <span className="progression-request-review"><button type="button" disabled={busy || !isMaster} onClick={() => reviewCharacteristic(request.id, true)}>Aprovar</button><button type="button" disabled={busy || !isMaster} onClick={() => reviewCharacteristic(request.id, false)}>Rejeitar</button></span>}
+            </div>;
+          })}
+        </div>
+      </div>
+      <div className="progression-history">
+        <div className="paper-section-title"><div><h3>HISTÓRICO DE XP</h3></div></div>
+        {xp.transactions.length ? xp.transactions.map((transaction) => <div className="progression-history-row" key={transaction.id}><strong>{transaction.amount > 0 ? "+" : ""}{transaction.amount}</strong><span>{transaction.description}</span></div>) : <p>Nenhuma transação registrada.</p>}
+      </div>
+    </section>
+  );
 }
 
 function TugOfWar({ character, setCharacter, onChangeDetermination }) {

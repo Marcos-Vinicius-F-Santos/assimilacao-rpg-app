@@ -3556,6 +3556,11 @@ html,
 .progression-aptitude-row:first-of-type { border-top: 0; }
 .progression-aptitude-row span,
 .progression-characteristic-row span { color: #4c392c; font-weight: 700; font-size: 12px; }
+.progression-characteristic-copy { min-width: 0; flex: 1; }
+.progression-characteristic-copy > strong { display: block; color: #4c392c; font-size: 12px; }
+.progression-characteristic-copy details { margin-top: 5px; color: #866e59; font-size: 10px; font-weight: 400; }
+.progression-characteristic-copy summary { cursor: pointer; color: #315e60; font: 700 9px 'Space Grotesk'; text-transform: uppercase; }
+.progression-characteristic-copy details p { margin: 5px 0 0; color: #866e59; font-size: 11px; line-height: 1.45; }
 .progression-aptitude-row small,
 .progression-characteristic-row small { display: block; margin-top: 3px; color: #866e59; font-size: 10px; font-weight: 400; }
 .progression-aptitude-row button,
