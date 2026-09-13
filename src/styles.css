@@ -113,6 +113,30 @@
     border-bottom-color: #7a5040
 }
 
+.auth-dev-login {
+    display: grid;
+    gap: 5px;
+    margin-top: 22px;
+    padding-top: 16px;
+    border-top: 1px dashed #c7b99d;
+    color: #927b67;
+    font-size: 11px;
+    letter-spacing: .04em;
+    text-transform: uppercase
+}
+
+.auth-dev-login .auth-mode-toggle {
+    margin-top: 0;
+    font-size: 12px;
+    text-transform: none;
+    letter-spacing: normal
+}
+
+.auth-mode-toggle:disabled {
+    cursor: wait;
+    opacity: .55
+}
+
 .auth-forgot-link {
     margin-top: 13px;
     border: 0;

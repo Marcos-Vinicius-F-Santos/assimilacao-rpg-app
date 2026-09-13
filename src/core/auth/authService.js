@@ -1,9 +1,28 @@
-import { supabase } from "../lib/supabase";
+import { isLocalSupabase, supabase } from "../lib/supabase";
+
+const AUTH_REQUEST_TIMEOUT_MS = 5000;
+
+function withAuthTimeout(promise) {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = window.setTimeout(() => reject(new Error("Não foi possível conectar ao Supabase.")), AUTH_REQUEST_TIMEOUT_MS);
+  });
+  return Promise.race([promise, timeout]).finally(() => window.clearTimeout(timeoutId));
+}
 
 export async function restoreSession() {
   if (!supabase) return { session: null, error: new Error("Supabase não configurado.") };
-  const { data, error } = await supabase.auth.getSession();
-  return { session: data.session || null, error };
+  try {
+    const { data, error } = await withAuthTimeout(supabase.auth.getSession());
+    if (error) return { session: null, error };
+    const { error: connectionError } = await withAuthTimeout(
+      supabase.from("profiles").select("id").limit(1),
+    );
+    if (connectionError) return { session: null, error: connectionError };
+    return { session: data.session || null, error };
+  } catch (error) {
+    return { session: null, error };
+  }
 }
 
 export function subscribeToAuthChanges(callback) {
@@ -14,13 +33,20 @@ export function subscribeToAuthChanges(callback) {
 
 export async function getProfile(userId) {
   if (!supabase) return null;
-  const { data } = await supabase.from("profiles").select("id, display_name, created_at, updated_at").eq("id", userId).maybeSingle();
+  const { data, error } = await withAuthTimeout(supabase.from("profiles").select("id, display_name, created_at, updated_at").eq("id", userId).maybeSingle());
+  if (error) throw error;
   return data || null;
 }
 
 export function signIn(email, password) {
   if (!supabase) return Promise.resolve({ error: new Error("Supabase não configurado.") });
   return supabase.auth.signInWithPassword({ email: email.trim(), password });
+}
+
+export function signInAsMockAdmin() {
+  if (!isLocalSupabase) return Promise.resolve({ error: new Error("O login Admin Mock só está disponível no DEV local.") });
+  if (!supabase) return Promise.resolve({ error: new Error("Supabase local não configurado.") });
+  return supabase.auth.signInAnonymously({ options: { data: { display_name: "Admin Mock" } } });
 }
 
 export function signUp(email, password, displayName) {

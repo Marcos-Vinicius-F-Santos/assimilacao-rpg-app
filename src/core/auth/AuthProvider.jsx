@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { supabaseConfigured } from "../lib/supabase";
-import { getProfile, requestPasswordReset, restoreSession, signIn, signOut, signUp, subscribeToAuthChanges, updatePassword } from "../services/authService";
+import { isLocalSupabase, isProductionBuild, supabaseConfigured } from "../lib/supabase";
+import { getProfile, requestPasswordReset, restoreSession, signIn, signInAsMockAdmin, signOut, signUp, subscribeToAuthChanges, updatePassword } from "./authService";
 
 const AuthContext = createContext(null);
 
@@ -28,6 +28,7 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [recoverySession, setRecoverySession] = useState(null);
+  const [connectionError, setConnectionError] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -46,19 +47,39 @@ export function AuthProvider({ children }) {
       if (active) setProfile(nextProfile);
     };
 
-    restoreSession().then(async ({ session: restoredSession }) => {
-      if (!active) return;
-      setSession(restoredSession);
-      if (hasRecoveryCallback() && restoredSession) setRecoverySession(restoredSession);
-      await loadProfile(restoredSession);
-      if (active) setLoading(false);
-    });
+    const initialize = async () => {
+      try {
+        const { session: restoredSession, error } = await restoreSession();
+        if (!active) return;
+        if (error) throw error;
+        setSession(restoredSession);
+        if (hasRecoveryCallback() && restoredSession) setRecoverySession(restoredSession);
+        await loadProfile(restoredSession);
+      } catch (error) {
+        if (active) {
+          setSession(null);
+          setProfile(null);
+          setConnectionError(error);
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void initialize();
 
     const unsubscribe = subscribeToAuthChanges((nextSession, event) => {
       setSession(nextSession);
+      if (nextSession) setConnectionError(null);
       if (event === "PASSWORD_RECOVERY") setRecoverySession(nextSession);
       if (event === "SIGNED_OUT") setRecoverySession(null);
-      void loadProfile(nextSession);
+      if (event === "SIGNED_OUT") setConnectionError(null);
+      void loadProfile(nextSession).catch((error) => {
+        if (active) {
+          setSession(null);
+          setProfile(null);
+          setConnectionError(error);
+        }
+      });
       setLoading(false);
     });
 
@@ -70,6 +91,9 @@ export function AuthProvider({ children }) {
 
   const value = useMemo(() => ({
     configured: supabaseConfigured,
+    localMockEnabled: isLocalSupabase,
+    productionBuild: isProductionBuild,
+    connectionError,
     session,
     user: userFromSession(session, profile),
     recoverySession,
@@ -77,6 +101,7 @@ export function AuthProvider({ children }) {
     signIn: async (email, password) => {
       return signIn(email, password);
     },
+    signInAsMockAdmin: async () => signInAsMockAdmin(),
     signUp: async (email, password, displayName) => {
       return signUp(email, password, displayName);
     },
@@ -85,7 +110,7 @@ export function AuthProvider({ children }) {
     },
     requestPasswordReset: async (email) => requestPasswordReset(email),
     updatePassword: async (newPassword) => updatePassword(newPassword),
-  }), [loading, profile, recoverySession, session]);
+  }), [connectionError, loading, profile, recoverySession, session]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

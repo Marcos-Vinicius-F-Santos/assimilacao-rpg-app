@@ -77,7 +77,7 @@ export async function getCampaignMembers(campaignId) {
 }
 
 export async function listCampaignCharacters(campaignId) {
-  const { data, error } = await client().from("campaign_characters").select("id, campaign_id, owner_user_id, name, data, is_susceptible, assimilation_pending, pending_assimilation, created_at, updated_at").eq("campaign_id", campaignId).order("created_at", { ascending: true });
+  const { data, error } = await ensureClient().from("campaign_characters").select("id, campaign_id, owner_user_id, name, data, is_susceptible, assimilation_pending, pending_assimilation, created_at, updated_at").eq("campaign_id", campaignId).order("created_at", { ascending: true });
   if (error) throw error;
   return (data || []).map(mapCharacter);
 }

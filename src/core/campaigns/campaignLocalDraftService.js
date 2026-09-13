@@ -1,20 +1,5 @@
-import { itemCatalog } from "./inventoryCatalog.js";
-import { officialAssimilations } from "./assimilationsCatalog.js";
-
 export const CAMPAIGN_STORAGE_KEY = "assimilation-campaign-store";
 export const CAMPAIGN_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-
-export function getAssimilations() {
-  return officialAssimilations;
-}
-
-export function getAssimilationsByFamily(family) {
-  return officialAssimilations.filter((assimilation) => assimilation.family === family);
-}
-
-export function getAssimilationById(id) {
-  return officialAssimilations.find((assimilation) => assimilation.id === id) || null;
-}
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
@@ -540,8 +525,8 @@ export function rejectHomebrewRequest(store, { requestId, reviewedByUserId }) {
   return { ok: true, store: nextStore };
 }
 
-export function getCampaignAvailableItems(store, campaignId) {
-  const official = itemCatalog.map((item) => ({ ...item, sourceType: "official", itemId: item.id }));
+export function getCampaignAvailableItems(store, campaignId, officialCatalog = []) {
+  const official = officialCatalog.map((item) => ({ ...item, sourceType: "official", itemId: item.id }));
   const campaign = (store.campaignItems || []).filter((item) => item.campaignId === campaignId).map((item) => ({ ...item, sourceType: "campaign", itemId: item.id }));
   const homebrew = (store.campaignHomebrewItems || []).filter((link) => link.campaignId === campaignId).map((link) => ({ ...link.snapshot, id: link.id, sourceType: "homebrew", itemId: link.homebrewItemId, homebrewItemId: link.homebrewItemId, campaignHomebrewId: link.id, createdByUserId: link.addedByUserId, approvedByUserId: link.approvedByUserId }));
   return [...official, ...campaign, ...homebrew];
@@ -570,15 +555,15 @@ export function createInventoryItemInstance(item, { characterId, location, id } 
   };
 }
 
-export function resolveInventoryItemDefinition(inventoryItem, store) {
+export function resolveInventoryItemDefinition(inventoryItem, store, officialCatalog = []) {
   const sourceType = inventoryItem?.sourceType || inventoryItem?.itemSource;
-  if (sourceType === "official") return itemCatalog.find((item) => item.id === (inventoryItem.catalogItemId || inventoryItem.itemId)) || null;
+  if (sourceType === "official") return officialCatalog.find((item) => item.id === (inventoryItem.catalogItemId || inventoryItem.itemId)) || null;
   if (sourceType === "campaign") return (store.campaignItems || []).find((item) => item.id === inventoryItem.itemId || item.id === inventoryItem.campaignItemId) || null;
   if (sourceType === "homebrew") {
     const link = (store.campaignHomebrewItems || []).find((entry) => entry.id === (inventoryItem.campaignHomebrewId || inventoryItem.itemId));
     return link?.snapshot || null;
   }
-  return itemCatalog.find((item) => item.id === inventoryItem.catalogItemId) || null;
+  return officialCatalog.find((item) => item.id === inventoryItem.catalogItemId) || null;
 }
 
 export function deleteCampaign(store, { campaignId, userId }) {

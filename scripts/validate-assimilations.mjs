@@ -1,7 +1,7 @@
 import {
   officialAssimilations,
   validateAssimilationCatalog,
-} from "../src/assimilationsCatalog.js";
+} from "../src/systems/assimilacao/assimilationsCatalog.js";
 
 const report = validateAssimilationCatalog();
 
