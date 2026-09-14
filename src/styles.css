@@ -3568,9 +3568,9 @@ html,
 .progression-history h3 { color: #866e59; font: 700 10px 'Space Grotesk'; letter-spacing: .08em; text-transform: uppercase; }
 .paper-progression > .paper-section-title strong { color: #315e60; font-size: 14px; }
 .progression-lock,
-.progression-error,
-.progression-characteristics,
-.progression-history { margin: 14px 0 0; padding: 12px; border: 1px solid #c7ab84; background: #ead9bd80; color: #866e59; font-size: 12px; }
+.progression-error { margin: 14px 0 0; padding: 12px; border: 1px solid #c7ab84; background: #ead9bd80; color: #866e59; font-size: 12px; }
+.progression-history { margin: 14px 0 0; padding: 12px; border: 1px solid #c7ab84; background: #f8efdb; color: #866e59; font-size: 12px; }
+.progression-characteristics { margin: 14px 0 0; padding: 12px; border: 1px solid #c7ab84; background: #f8efdb; color: #866e59; font-size: 12px; }
 .progression-error { border-color: #713b35; color: #713b35; }
 .progression-aptitude-groups { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
 .progression-aptitude-group { padding: 12px; border: 1px solid #c7ab84; background: #f8efdb; }
@@ -3583,7 +3583,7 @@ html,
 .progression-characteristic-copy { min-width: 0; flex: 1; }
 .progression-characteristic-copy > strong { display: block; color: #4c392c; font-size: 12px; }
 .progression-characteristic-copy details { margin-top: 5px; color: #866e59; font-size: 10px; font-weight: 400; }
-.progression-characteristic-copy summary { cursor: pointer; color: #315e60; font: 700 9px 'Space Grotesk'; text-transform: uppercase; }
+.progression-characteristic-copy summary { cursor: pointer; color: #713b35; font: 700 9px 'Space Grotesk'; text-transform: uppercase; }
 .progression-characteristic-copy details p { margin: 5px 0 0; color: #866e59; font-size: 11px; line-height: 1.45; }
 .progression-aptitude-row small,
 .progression-characteristic-row small { display: block; margin-top: 3px; color: #866e59; font-size: 10px; font-weight: 400; }
@@ -3596,9 +3596,9 @@ html,
 .progression-history .paper-section-title h3 { margin: 0; color: #713b35; }
 .progression-characteristic-list { display: grid; max-height: 420px; overflow: auto; }
 .progression-request-review { display: flex; gap: 4px; }
-.progression-request-review button { border-color: #315e60; color: #315e60; }
+.progression-request-review button { border-color: #9b725e; color: #713b35; }
 .progression-history-row { display: flex; gap: 10px; padding: 7px 0; border-top: 1px dashed #c7ab84; color: #866e59; font-size: 12px; }
-.progression-history-row strong { min-width: 30px; color: #315e60; }
+.progression-history-row strong { min-width: 30px; color: #713b35; }
 .progression-history p { margin: 0; color: #866e59; font-size: 12px; }
 .progression-page-content { width: min(1120px, calc(100% - 76px)); margin: 0 auto; padding: 38px 0 70px; border-top: 0; }
 .progression-page-content > .paper-section-title { margin-bottom: 18px; }
