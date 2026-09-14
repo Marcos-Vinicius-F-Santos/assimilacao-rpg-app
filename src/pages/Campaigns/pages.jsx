@@ -424,7 +424,70 @@ function CampaignSectionLayout({ campaign, activeSection, eyebrow, title, descri
   return <div className={`campaign-page reference-page ${pageClassName}`.trim()}><header className="campaign-page-header campaign-detail-header"><div><button type="button" className="campaign-back-link" onClick={onBack}>← {backLabel}</button><span className="eyebrow">{eyebrow}</span><h1>{title}</h1><p>{description}</p></div>{aside}</header><CampaignReferenceNav campaignId={campaign.id} active={activeSection} /><main className={`campaign-page-content ${contentClassName}`.trim()}>{children}</main></div>;
 }
 
-function CampaignCharacteristicsPage({ store, user, campaignId, onBack }) {
+function ExpandableCharacteristicDescription({ id, text, expanded, onToggle, className = "" }) {
+  const descriptionRef = useRef(null);
+  const [hasOverflow, setHasOverflow] = useState(false);
+
+  useEffect(() => {
+    const element = descriptionRef.current;
+    if (!element || !text) return undefined;
+    const measure = () => {
+      const wasExpanded = expanded;
+      if (wasExpanded) element.classList.remove("is-expanded");
+      const overflow = element.scrollHeight > element.clientHeight + 1;
+      if (wasExpanded) element.classList.add("is-expanded");
+      setHasOverflow(overflow);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(measure) : null;
+    observer?.observe(element);
+    return () => {
+      window.removeEventListener("resize", measure);
+      observer?.disconnect();
+    };
+  }, [expanded, text]);
+
+  if (!text) return null;
+  return <div className="characteristic-description-control">
+    <p id={`${id}-description`} ref={descriptionRef} className={`${className}${expanded ? " is-expanded" : ""}`}>{text}</p>
+    {hasOverflow && <button type="button" className="characteristic-expand-button" aria-expanded={expanded} aria-controls={`${id}-description`} onClick={(event) => { event.stopPropagation(); onToggle(); }}>{expanded ? "MOSTRAR MENOS" : "VER MAIS"}</button>}
+  </div>;
+}
+
+function toggleExpandedId(setter, id) {
+  setter((current) => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+}
+
+class CampaignCharacteristicsErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error) {
+    console.error("Falha ao carregar a biblioteca de características.", error);
+  }
+
+  render() {
+    if (this.state.hasError) return <CampaignAccessMessage title="Biblioteca indisponível" description="Não foi possível carregar a biblioteca de características. Volte ao menu da campanha e tente novamente." onBack={this.props.onBack} />;
+    return this.props.children;
+  }
+}
+
+function CampaignCharacteristicsPage(props) {
+  return <CampaignCharacteristicsErrorBoundary onBack={props.onBack}><CampaignCharacteristicsContent {...props} /></CampaignCharacteristicsErrorBoundary>;
+}
+
+function CampaignCharacteristicsContent({ store, user, campaignId, onBack }) {
   const [search, setSearch] = useState("");
   const [cost, setCost] = useState("all");
   const [expandedCharacteristicIds, setExpandedCharacteristicIds] = useState(() => new Set());
