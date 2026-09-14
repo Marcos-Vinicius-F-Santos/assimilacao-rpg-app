@@ -31,7 +31,7 @@ import {
   CampaignSessionsPage,
   HomebrewPage,
 } from "../pages/Campaigns";
-import { CharacterCreationPage } from "../pages/CampaignCreate";
+import { CharacterCreationErrorBoundary, CharacterCreationPage } from "../pages/CampaignCreate";
 import { CharacterPage, PersonalCharacterPage, PersonalCharactersPage, ProgressionPage } from "../pages/CharacterSheet";
 
 function parseAppRoute(pathname = window.location.pathname) {
@@ -99,7 +99,7 @@ function AuthenticatedApp({ user, onSignOut }) {
   let page;
   if (route.type === "campaigns") page = <CampaignListPage store={campaignStore} user={user} onOpenCampaign={(id) => navigate(`/campaigns/${id}`)} onOpenCharacters={() => navigate("/characters")} onOpenHomebrew={() => navigate("/homebrew")} onCreateCampaign={handleCreateCampaign} onJoinCampaign={handleJoinCampaign} onSignOut={onSignOut} />;
   else if (route.type === "personal-characters") page = <PersonalCharactersPage store={campaignStore} setStore={setCampaignStore} user={user} onBack={() => navigate("/")} onOpenCharacter={(id) => navigate(`/characters/${id}`)} onCreate={() => navigate("/characters/new")} />;
-  else if (route.type === "personal-create") page = <CharacterCreationPage store={campaignStore} setStore={setCampaignStore} user={user} mode="personal" onCancel={() => navigate("/characters")} onComplete={(id) => navigate(`/characters/${id}`)} />;
+  else if (route.type === "personal-create") page = <CharacterCreationErrorBoundary><CharacterCreationPage store={campaignStore} setStore={setCampaignStore} user={user} mode="personal" onCancel={() => navigate("/characters")} onComplete={(id) => navigate(`/characters/${id}`)} /></CharacterCreationErrorBoundary>;
   else if (route.type === "personal-character") page = <PersonalCharacterPage store={campaignStore} setStore={setCampaignStore} user={user} personalCharacterId={route.personalCharacterId} onBack={() => navigate("/characters")} onNavigate={navigate} notify={notify} mobileMenu={mobileMenu} setMobileMenu={setMobileMenu} />;
   else if (route.type === "homebrew") page = <HomebrewPage store={campaignStore} setStore={setCampaignStore} user={user} onBack={() => navigate("/")} onOpenCharacters={() => navigate("/characters")} onOpenCampaign={(id) => navigate(`/campaigns/${id}`)} notify={notify} />;
   else if (route.type === "campaign") page = <CampaignPage store={campaignStore} setStore={setCampaignStore} user={user} campaignId={route.campaignId} onBack={() => navigate("/")} onOpenItems={(id) => navigate(`/campaigns/${id}/items`)} onOpenCharacteristics={(id) => navigate(`/campaigns/${id}/characteristics`)} onOpenAssimilations={(id) => navigate(`/campaigns/${id}/assimilations`)} onOpenCharacter={(campaignId, characterId) => navigate(`/campaigns/${campaignId}/characters/${characterId}`)} onCreateCharacter={(id) => navigate(`/campaigns/${id}/characters/new`)} onUsePersonal={handleUsePersonalCharacter} />;

@@ -221,6 +221,41 @@ function toggleExpandedId(setter, id) {
   });
 }
 
+const assimilationFamilyShortLabels = { evolutive: "EV", adaptive: "AD", inopportune: "IN", singular: "SI" };
+
+function initialAssimilationMutationDetail(mutation) {
+  const family = assimilationFamilyLabels[mutation.family] || mutation.family;
+  return {
+    category: "Mutação",
+    symbol: assimilationFamilyShortLabels[mutation.family] || "M",
+    name: mutation.name,
+    type: family,
+    description: mutation.description,
+    label: "Assimilação pai",
+    meta: mutation.assimilationName,
+    family,
+    cost: formatAssimilationAcquisitionCost(mutation.acquisitionCost),
+    requirement: mutation.assimilationLevelRequirement ? formatAssimilationLevelRequirement(mutation.assimilationLevelRequirement) : null,
+  };
+}
+
+function AssimilationSymbol({ type, size = "md", className = "" }) {
+  const symbolSource = symbolAssets[type];
+  return <img src={symbolSource} alt="" aria-hidden="true" className={`assimilation-symbol assimilation-symbol--${type} assimilation-symbol--${size} ${className}`.trim()} />;
+}
+
+const symbolLabels = { success: "Joaninha", failure: "Coruja", adaptation: "Adaptação" };
+const symbolOrder = ["success", "failure", "adaptation"];
+
+function dieSymbols(die) {
+  return symbolOrder.flatMap((type) => Array.from({ length: die.symbols[type] }, () => type));
+}
+
+function dieAriaLabel(die) {
+  const symbols = dieSymbols(die);
+  return `${die.dieType.toUpperCase()}, ${symbols.length ? symbols.map((symbol) => symbolLabels[symbol].toLowerCase()).join(", ") : "face vazia"}`;
+}
+
 function InitialAssimilationDieCard({ die }) {
   const symbols = dieSymbols(die);
   return <article className="assimilation-die initial-assimilation-die" aria-label={dieAriaLabel(die)}>
@@ -252,6 +287,44 @@ function getInitialDiceLabel(level) {
 
 function CreationStepTitle({ number, label, children }) {
   return <div className="creation-step-title"><span>{number} / 9</span><div><small>ETAPA {number}</small><h2>{label}</h2>{children}</div></div>;
+}
+
+function CharacterDetailModal({ detail, onClose }) {
+  if (!detail) return null;
+  return createPortal(<div className="detail-modal-backdrop" role="presentation" onClick={onClose}>
+    <section className="detail-modal" role="dialog" aria-modal="true" aria-labelledby="detail-modal-title" onClick={(event) => event.stopPropagation()}>
+      <div className="detail-modal-head">
+        <div className="detail-modal-heading">
+          <span className={`paper-mutation-symbol ${detail.category === "Assimilação" ? "assimilation" : ""}`}>{detail.symbol}</span>
+          <div><small>{detail.category}{detail.type ? ` · ${detail.type}` : ""}</small><h2 id="detail-modal-title">{detail.name}</h2></div>
+        </div>
+        <button type="button" className="detail-modal-close" onClick={onClose} aria-label="Fechar descrição"><X size={18} /></button>
+      </div>
+      <p className="detail-modal-description">{detail.description}</p>
+      {(detail.family || detail.cost || detail.requirement) && <div className="detail-modal-facts">{detail.family && <div><span>Família</span><strong>{detail.family}</strong></div>}{detail.cost && <div><span>Custo</span><strong>{detail.cost}</strong></div>}{detail.requirement && <div><span>Requisito</span><strong>{detail.requirement}</strong></div>}</div>}
+      {detail.abilities?.length > 0 && <div className="detail-modal-abilities"><h3>{detail.acquiredOnly ? "Mutações adquiridas" : "Habilidades"}</h3>{detail.abilities.map((ability) => <div className="detail-modal-ability" key={ability.id || ability.name}><strong>{ability.name}</strong><small>Custo: {formatAssimilationAcquisitionCost(ability.acquisitionCost)}</small>{ability.assimilationLevelRequirement && <small>Requisito: {formatAssimilationLevelRequirement(ability.assimilationLevelRequirement)}</small>}{ability.costText && !ability.assimilationLevelRequirement && !/^Assimilação\s+\d+/i.test(ability.costText) && <small>{ability.costText}</small>}<p>{ability.description}</p></div>)}</div>}
+      <div className="detail-modal-meta"><span>{detail.label}</span><strong>{detail.meta}</strong></div>
+    </section>
+  </div>, document.body);
+}
+
+class CharacterCreationErrorBoundary extends React.Component {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("Falha ao carregar a tela de criação de personagem", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <main className="creation-error-state" role="alert"><p>Não foi possível carregar a tela. Consulte o administrador.</p></main>;
+    }
+    return this.props.children;
+  }
 }
 
 function CharacterCreationPage({ store, setStore, user, campaign = null, mode = "personal", onCancel, onComplete }) {
@@ -438,4 +511,4 @@ function CharacterCreationPage({ store, setStore, user, campaign = null, mode = 
   return <div className="creation-page"><header className="creation-header"><div><button type="button" className="campaign-back-link" onClick={onCancel}>← Cancelar</button><span className="eyebrow">{mode === "campaign" ? "PERSONAGEM DE CAMPANHA" : "BIBLIOTECA PESSOAL"}</span><h1>Criação de personagem</h1><p>{mode === "campaign" ? `Criando para ${campaign.name}.` : "Monte uma base pessoal reutilizável em campanhas."}</p></div><div className="creation-progress"><strong>{stepIndex + 1} / 9</strong><span>{step.label}</span><div><i style={{ width: `${((stepIndex + 1) / 9) * 100}%` }} /></div></div></header><main className="creation-card"><CreationStepTitle number={stepIndex + 1} label={step.label}>{step.id === "aptitudes" && <p>Os limites desta etapa valem apenas para a criação inicial.</p>}{step.id === "health" && <p>Calculada a partir de Potência e Resolução.</p>}{step.id === "characteristics" && <p>7 XP para Características ou Conhecimentos/Práticas.</p>}</CreationStepTitle><section className="creation-step-body">{renderStep()}</section>{errors.length > 0 && <div className="creation-errors" role="alert">{errors.map((error) => <span key={error}>{error}</span>)}</div>}<footer className="creation-footer"><button type="button" className="campaign-secondary-btn" onClick={stepIndex ? back : onCancel}>Voltar</button>{stepIndex === creationSteps.length - 1 ? <button type="button" className="campaign-primary-btn" onClick={finish}>Criar personagem</button> : <button type="button" className="campaign-primary-btn" onClick={next}>{stepIndex === creationSteps.length - 2 ? "Revisar personagem" : "Continuar"}</button>}</footer></main><CharacterDetailModal detail={initialMutationDetail} onClose={() => setInitialMutationDetail(null)} /></div>;
 }
 
-export { CharacterCreationPage };
+export { CharacterCreationErrorBoundary, CharacterCreationPage };

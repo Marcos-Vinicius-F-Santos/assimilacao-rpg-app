@@ -1978,6 +1978,8 @@ select:focus-visible {
 
 /* Criação inicial: um rascunho único, com limites isolados do restante da ficha. */
 .creation-page { min-height: 100vh; padding: 48px 24px 64px; box-sizing: border-box; color: #4c392c; background: #eee6d1; background-image: radial-gradient(circle at 12% 18%, #fff9 0 2px, transparent 3px), linear-gradient(110deg, #eee6d1, #f4ecd9 48%, #e8ddc6); font-family: 'DM Sans', sans-serif; }
+.creation-error-state { display: grid; place-items: center; min-height: 100vh; padding: 48px 24px; box-sizing: border-box; color: #4c392c; background: #eee6d1; background-image: radial-gradient(circle at 12% 18%, #fff9 0 2px, transparent 3px), linear-gradient(110deg, #eee6d1, #f4ecd9 48%, #e8ddc6); font-family: 'DM Sans', sans-serif; }
+.creation-error-state p { width: min(520px, 100%); margin: 0; padding: 24px; box-sizing: border-box; border: 1px solid #b99c76; background: #f5ecd8; box-shadow: 5px 5px 0 #8f704e; color: #713b35; font: 600 15px/1.5 'DM Sans', sans-serif; text-align: center; }
 .creation-header, .creation-card { width: min(980px, 100%); margin: 0 auto; }
 .creation-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 28px; padding-bottom: 26px; border-bottom: 1px solid #ad9679; }
 .creation-header h1 { margin: 6px 0 0; color: #713b35; font: 700 clamp(27px, 4vw, 40px) 'Space Grotesk'; letter-spacing: -.07em; text-transform: uppercase; }

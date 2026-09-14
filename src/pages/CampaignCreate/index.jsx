@@ -1,1 +1,1 @@
-export { CharacterCreationPage } from "./pages";
+export { CharacterCreationErrorBoundary, CharacterCreationPage } from "./pages";
